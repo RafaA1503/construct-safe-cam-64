@@ -113,7 +113,7 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
     setIsManuallyStopped(true);
   };
 
-  const captureImage = () => {
+  const captureImage = async () => {
     console.log("🔥 captureImage called");
     if (videoRef.current && canvasRef.current) {
       const canvas = canvasRef.current;
@@ -127,7 +127,7 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0);
-        const imageData = canvas.toDataURL('image/jpeg');
+        const imageData = canvas.toDataURL('image/jpeg', 0.8);
         console.log("🖼️ Image data generated, length:", imageData.length);
         setCapturedImages(prev => [...prev, imageData]);
         
@@ -146,33 +146,86 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
           return Math.max(0.3, percentage);
         };
 
-        // Guardar en localStorage para la galería
-        const savedImages = JSON.parse(localStorage.getItem("captured_images") || "[]");
         const allDetections = detectedPPE.map(d => d.type);
         console.log("🔍 Current detections:", allDetections);
         
-        const newImage = {
-          id: Date.now().toString(),
-          url: imageData,
-          timestamp: new Date().toISOString(),
-          detections: allDetections,
-          confidence: calculateConfidence(allDetections)
-        };
-        
-        savedImages.push(newImage);
-        console.log("💾 Saving to localStorage, total images:", savedImages.length);
+        const newImageId = Date.now().toString();
+        const confidence = calculateConfidence(allDetections);
         
         try {
-          localStorage.setItem("captured_images", JSON.stringify(savedImages));
-          console.log("✅ Successfully saved to localStorage");
+          // Upload to Supabase Storage
+          const { supabase } = await import("@/integrations/supabase/client");
+          
+          // Convert base64 to blob
+          const base64Data = imageData.split(',')[1];
+          const byteCharacters = atob(base64Data);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: 'image/jpeg' });
+          
+          // Upload image to storage
+          const fileName = `epp_${newImageId}.jpg`;
+          const { data: uploadData, error: uploadError } = await supabase.storage
+            .from('epp-images')
+            .upload(fileName, blob);
+          
+          if (uploadError) {
+            console.error("❌ Upload error:", uploadError);
+            throw uploadError;
+          }
+          
+          // Get public URL
+          const { data: { publicUrl } } = supabase.storage
+            .from('epp-images')
+            .getPublicUrl(fileName);
+          
+          // Save metadata to database
+          const { error: dbError } = await supabase
+            .from('captured_images')
+            .insert({
+              id: newImageId,
+              url: publicUrl,
+              detections: allDetections,
+              confidence: confidence,
+              is_protected: false
+            });
+          
+          if (dbError) {
+            console.error("❌ Database error:", dbError);
+            throw dbError;
+          }
+          
+          console.log("✅ Successfully saved to Supabase");
+          
+          toast({
+            title: "Foto capturada",
+            description: "Imagen guardada y sincronizada",
+          });
         } catch (error) {
-          console.error("❌ Error saving to localStorage:", error);
+          console.error("❌ Error saving to Supabase:", error);
+          
+          // Fallback to localStorage
+          const savedImages = JSON.parse(localStorage.getItem("captured_images") || "[]");
+          const newImage = {
+            id: newImageId,
+            url: imageData,
+            timestamp: new Date().toISOString(),
+            detections: allDetections,
+            confidence: confidence
+          };
+          
+          savedImages.push(newImage);
+          localStorage.setItem("captured_images", JSON.stringify(savedImages));
+          console.log("💾 Fallback: Saved to localStorage");
+          
+          toast({
+            title: "Foto capturada",
+            description: "Imagen guardada localmente (sin conexión)",
+          });
         }
-        
-        toast({
-          title: "Foto capturada",
-          description: "Imagen guardada correctamente",
-        });
       } else {
         console.error("❌ No se pudo obtener contexto 2D del canvas");
       }

@@ -48,41 +48,85 @@ const Gallery = () => {
   };
 
   useEffect(() => {
-    // Cargar imágenes desde localStorage (demo)
-    const savedImages = localStorage.getItem("captured_images");
-    if (savedImages) {
+    const loadImages = async () => {
+      setIsLoading(true);
       try {
-        const parsedImages = JSON.parse(savedImages).map((img: any) => ({
-          ...img,
-          timestamp: new Date(img.timestamp),
-          confidence: calculateConfidence(img.detections || [])
-        }));
-        setImages(parsedImages);
+        // Load images from Supabase
+        const { supabase } = await import("@/integrations/supabase/client");
+        
+        const { data: supabaseImages, error } = await supabase
+          .from('captured_images')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) {
+          console.error("Error loading from Supabase:", error);
+          throw error;
+        }
+        
+        if (supabaseImages && supabaseImages.length > 0) {
+          const formattedImages: CapturedImage[] = supabaseImages.map((img: any) => ({
+            id: img.id,
+            url: img.url,
+            timestamp: new Date(img.timestamp || img.created_at),
+            detections: img.detections || [],
+            confidence: img.confidence || 0,
+            isProtected: img.is_protected || false
+          }));
+          setImages(formattedImages);
+          console.log("✅ Loaded images from Supabase:", formattedImages.length);
+        } else {
+          // Fallback to localStorage
+          const savedImages = localStorage.getItem("captured_images");
+          if (savedImages) {
+            const parsedImages = JSON.parse(savedImages).map((img: any) => ({
+              ...img,
+              timestamp: new Date(img.timestamp),
+              confidence: calculateConfidence(img.detections || [])
+            }));
+            setImages(parsedImages);
+            console.log("📱 Loaded images from localStorage:", parsedImages.length);
+          } else {
+            // Demo data when no images exist
+            const demoImages: CapturedImage[] = [
+              {
+                id: "demo-1",
+                url: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkNhc2NvIERldGVjdGFkbzwvdGV4dD48L3N2Zz4=",
+                timestamp: new Date(Date.now() - 1000 * 60 * 30),
+                detections: ["casco", "chaleco"],
+                confidence: calculateConfidence(["casco", "chaleco"]),
+                isProtected: true
+              }
+            ];
+            setImages(demoImages);
+            console.log("🎭 Showing demo data");
+          }
+        }
       } catch (error) {
         console.error("Error loading images:", error);
-      }
-    } else {
-      // Datos de demo
-      const demoImages: CapturedImage[] = [
-        {
-          id: "1",
-          url: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkNhc2NvIERldGVjdGFkbzwvdGV4dD48L3N2Zz4=",
-          timestamp: new Date(Date.now() - 1000 * 60 * 30),
-          detections: ["casco", "chaleco"],
-          confidence: calculateConfidence(["casco", "chaleco"]),
-          isProtected: true
-        },
-        {
-          id: "2", 
-          url: "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZGRkIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkVQUCBDb21wbGV0bzwvdGV4dD48L3N2Zz4=",
-          timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
-          detections: ["casco", "chaleco", "gafas", "guantes", "mascarilla", "botas"],
-          confidence: calculateConfidence(["casco", "chaleco", "gafas", "guantes", "mascarilla", "botas"]),
-          isProtected: true
+        // Fallback to localStorage on any error
+        const savedImages = localStorage.getItem("captured_images");
+        if (savedImages) {
+          try {
+            const parsedImages = JSON.parse(savedImages).map((img: any) => ({
+              ...img,
+              timestamp: new Date(img.timestamp),
+              confidence: calculateConfidence(img.detections || [])
+            }));
+            setImages(parsedImages);
+          } catch (parseError) {
+            console.error("Error parsing localStorage images:", parseError);
+            setImages([]);
+          }
+        } else {
+          setImages([]);
         }
-      ];
-      setImages(demoImages);
-    }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadImages();
   }, []);
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
