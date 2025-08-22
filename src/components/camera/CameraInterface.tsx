@@ -190,7 +190,8 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
               url: publicUrl,
               detections: allDetections,
               confidence: confidence,
-              is_protected: false
+              is_protected: false,
+              user_id: null // No user required since gallery uses password protection
             });
           
           if (dbError) {
