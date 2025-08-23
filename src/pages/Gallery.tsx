@@ -208,19 +208,61 @@ const Gallery = () => {
   };
 
 
-  const handleDeleteImage = (imageId: string) => {
-    setImages(prev => prev.filter(img => img.id !== imageId));
-    setSelectedImage(null);
-    setUnlockedImages(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(imageId);
-      return newSet;
-    });
-    
-    toast({
-      title: "Imagen eliminada",
-      description: "La imagen ha sido eliminada de la galería",
-    });
+  const handleDeleteImage = async (imageId: string) => {
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      
+      // Find the image to get the storage path
+      const imageToDelete = images.find(img => img.id === imageId);
+      
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('captured_images')
+        .delete()
+        .eq('id', imageId);
+      
+      if (dbError) {
+        console.error("Error deleting from database:", dbError);
+        throw dbError;
+      }
+      
+      // Delete from storage if it's a Supabase storage URL
+      if (imageToDelete?.url && imageToDelete.url.includes('supabase.co')) {
+        // Extract file path from URL
+        const urlParts = imageToDelete.url.split('/');
+        const fileName = urlParts[urlParts.length - 1];
+        
+        const { error: storageError } = await supabase.storage
+          .from('epp-images')
+          .remove([fileName]);
+        
+        if (storageError) {
+          console.error("Error deleting from storage:", storageError);
+          // Don't throw here as the DB deletion was successful
+        }
+      }
+      
+      // Update local state
+      setImages(prev => prev.filter(img => img.id !== imageId));
+      setSelectedImage(null);
+      setUnlockedImages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(imageId);
+        return newSet;
+      });
+      
+      toast({
+        title: "Imagen eliminada completamente",
+        description: "La imagen ha sido eliminada de la base de datos y almacenamiento",
+      });
+    } catch (error) {
+      console.error("Error deleting image:", error);
+      toast({
+        title: "Error al eliminar",
+        description: "No se pudo eliminar la imagen completamente",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleImageClick = (image: CapturedImage) => {
@@ -251,69 +293,84 @@ const Gallery = () => {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center p-4">
-        <Card className="w-full max-w-md shadow-lg">
-          <CardHeader className="space-y-4 text-center">
-            <div className="mx-auto w-16 h-16 bg-primary rounded-full flex items-center justify-center">
-              <Lock className="w-8 h-8 text-primary-foreground" />
+      <div className="min-h-screen bg-gradient-to-br from-background via-card to-muted flex items-center justify-center p-4 relative overflow-hidden">
+        {/* Futuristic background elements */}
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/5 via-transparent to-accent/5" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse-glow" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-accent/10 rounded-full blur-2xl animate-pulse-glow" style={{animationDelay: '1s'}} />
+        
+        <Card className="w-full max-w-md shadow-2xl border-0 bg-card/90 backdrop-blur-xl relative z-10">
+          <CardHeader className="space-y-6 text-center pb-8">
+            <div className="mx-auto relative">
+              <div className="w-20 h-20 bg-gradient-primary rounded-2xl flex items-center justify-center shadow-lg animate-pulse-glow">
+                <Lock className="w-10 h-10 text-primary-foreground" />
+              </div>
+              <div className="absolute -inset-2 bg-gradient-primary rounded-2xl blur-md opacity-20 animate-pulse-glow" />
             </div>
-            <div>
-              <CardTitle className="text-2xl font-bold">Galería Protegida</CardTitle>
-              <CardDescription>
-                Acceso restringido a imágenes capturadas del sistema EPP
+            <div className="space-y-2">
+              <CardTitle className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                Galería Neural
+              </CardTitle>
+              <CardDescription className="text-base">
+                Sistema de Seguridad Avanzado • Acceso Biométrico Virtual
               </CardDescription>
             </div>
           </CardHeader>
 
-          <CardContent>
-            <form onSubmit={handlePasswordSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="gallery-password" className="flex items-center gap-2">
-                  <Shield className="w-4 h-4" />
-                  Contraseña de Acceso
+          <CardContent className="space-y-6">
+            <form onSubmit={handlePasswordSubmit} className="space-y-6">
+              <div className="space-y-3">
+                <Label htmlFor="gallery-password" className="flex items-center gap-3 text-sm font-medium">
+                  <div className="w-8 h-8 bg-gradient-accent rounded-lg flex items-center justify-center">
+                    <Shield className="w-4 h-4 text-accent-foreground" />
+                  </div>
+                  Clave de Acceso Neural
                 </Label>
                 <Input
                   id="gallery-password"
                   type="password"
-                  placeholder="Ingrese la contraseña"
+                  placeholder="∎∎∎∎∎∎∎∎∎∎∎∎∎∎"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
-                  className="transition-all duration-300 focus:shadow-industrial"
+                  className="h-12 bg-muted/50 border-border/50 focus:border-primary/50 focus:bg-background/80 transition-all duration-300"
                 />
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-3">
                 <Button 
                   type="button"
                   variant="outline" 
                   onClick={() => navigate("/")}
-                  className="flex-1"
+                  className="flex-1 h-12 border-border/50 hover:bg-muted/50 transition-all duration-300"
                 >
                   <ArrowLeft className="w-4 h-4 mr-2" />
-                  Volver
+                  Regresar
                 </Button>
                 
                 <Button 
                   type="submit" 
-                  className="flex-1"
+                  className="flex-1 h-12 bg-gradient-primary hover:shadow-lg hover:shadow-primary/20 transition-all duration-300"
                   disabled={isLoading}
                 >
                   {isLoading ? (
                     <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-rotate-loader" />
-                      Verificando...
+                      <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                      Autenticando...
                     </div>
                   ) : (
-                    "Acceder"
+                    <>
+                      <Shield className="w-4 h-4 mr-2" />
+                      Acceso Seguro
+                    </>
                   )}
                 </Button>
               </div>
 
-              <div className="text-center text-sm text-muted-foreground">
-                <div className="flex items-center justify-center gap-2 text-accent">
-                  <Shield className="w-4 h-4" />
-                  Contenido protegido por seguridad
+              <div className="text-center p-4 bg-muted/20 rounded-lg border border-border/30">
+                <div className="flex items-center justify-center gap-2 text-accent text-sm">
+                  <div className="w-2 h-2 bg-accent rounded-full animate-pulse" />
+                  Sistema Cuántico de Protección Activa
                 </div>
               </div>
             </form>
@@ -324,51 +381,65 @@ const Gallery = () => {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="bg-card border-b shadow-md">
-        <div className="container mx-auto px-4 py-4">
+    <div className="min-h-screen bg-gradient-to-br from-background via-card/30 to-muted relative">
+      {/* Futuristic background grid */}
+      <div className="absolute inset-0 bg-[linear-gradient(rgba(var(--primary)/0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(var(--primary)/0.03)_1px,transparent_1px)] bg-[size:20px_20px]" />
+      
+      {/* Header futurista */}
+      <div className="bg-card/80 backdrop-blur-xl border-b border-border/30 shadow-xl relative z-10">
+        <div className="container mx-auto px-6 py-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-6">
               <Button 
                 variant="outline" 
                 size="sm"
                 onClick={() => navigate("/")}
+                className="border-border/50 hover:bg-muted/50 hover:border-primary/30 transition-all duration-300"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
-                Volver
+                Portal Principal
               </Button>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center">
-                  <Images className="w-6 h-6 text-primary-foreground" />
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div className="w-14 h-14 bg-gradient-primary rounded-2xl flex items-center justify-center shadow-lg">
+                    <Images className="w-8 h-8 text-primary-foreground" />
+                  </div>
+                  <div className="absolute -inset-1 bg-gradient-primary rounded-2xl blur-sm opacity-30 animate-pulse-glow" />
                 </div>
-                <div>
-                  <h1 className="text-2xl font-bold">Galería de Capturas EPP</h1>
-                  <p className="text-muted-foreground">Imágenes con detecciones de equipos de protección</p>
+                <div className="space-y-1">
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                    Neural Gallery
+                  </h1>
+                  <p className="text-muted-foreground text-sm">
+                    Sistema de Análisis Cuántico • Detección EPP Avanzada
+                  </p>
                 </div>
               </div>
             </div>
             
-            <div className="flex items-center gap-3">
-              <Badge className="bg-accent text-accent-foreground">
-                {images.length} imágenes
-              </Badge>
+            <div className="flex items-center gap-4">
+              <div className="px-4 py-2 bg-gradient-accent rounded-full shadow-lg">
+                <div className="flex items-center gap-2 text-accent-foreground text-sm font-medium">
+                  <div className="w-2 h-2 bg-accent-foreground/80 rounded-full animate-pulse" />
+                  {images.length} Capturas Activas
+                </div>
+              </div>
               <Button 
                 variant="outline"
                 size="sm"
                 onClick={handleMigrateImages}
                 disabled={isMigrating}
-                className="flex items-center gap-2"
+                className="border-border/50 hover:bg-muted/50 hover:border-primary/30 transition-all duration-300"
               >
                 {isMigrating ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    Migrando...
+                    <div className="w-4 h-4 border-2 border-primary/50 border-t-primary rounded-full animate-spin" />
+                    Sincronizando...
                   </>
                 ) : (
                   <>
                     <RefreshCw className="w-4 h-4" />
-                    Sincronizar
+                    Sync Neural
                   </>
                 )}
               </Button>
@@ -378,85 +449,101 @@ const Gallery = () => {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-6 py-12 relative z-10">
         {images.length === 0 ? (
-          <Card className="text-center py-12">
-            <CardContent>
-              <Images className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No hay imágenes capturadas</h3>
-              <p className="text-muted-foreground">
-                Las imágenes aparecerán aquí cuando el sistema detecte EPP
-              </p>
+          <Card className="text-center py-16 bg-card/50 backdrop-blur-sm border-border/30">
+            <CardContent className="space-y-6">
+              <div className="relative mx-auto w-24 h-24">
+                <div className="w-24 h-24 bg-gradient-primary rounded-full flex items-center justify-center animate-pulse-glow">
+                  <Images className="w-12 h-12 text-primary-foreground" />
+                </div>
+                <div className="absolute -inset-2 bg-gradient-primary rounded-full blur-lg opacity-30 animate-pulse-glow" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+                  Base de Datos Neural Vacía
+                </h3>
+                <p className="text-muted-foreground">
+                  Aguardando activación de sensores cuánticos • Sistema EPP en standby
+                </p>
+              </div>
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
             {images.map((image) => (
-              <Card key={image.id} className="overflow-hidden hover:shadow-lg transition-all duration-300">
-                <div className="relative">
+              <Card key={image.id} className="group overflow-hidden bg-card/70 backdrop-blur-sm border-border/30 hover:bg-card/90 hover:shadow-2xl hover:shadow-primary/10 hover:border-primary/20 transition-all duration-500 hover:scale-105">
+                <div className="relative overflow-hidden">
                   <img 
                     src={image.isProtected && !unlockedImages.has(image.id) ? 
-                      "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZDFkNWRiIi8+PGNpcmNsZSBjeD0iMTYwIiBjeT0iOTAiIHI9IjMwIiBmaWxsPSIjNmI3Mjg0Ii8+PHJlY3QgeD0iMTQ1IiB5PSIxMDAiIHdpZHRoPSIzMCIgaGVpZ2h0PSIyMCIgcng9IjUiIGZpbGw9IiM2YjcyODQiLz48dGV4dCB4PSI1MCUiIHk9IjcwJSIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjEyIiBmaWxsPSIjMzc0MTUxIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JbWFnZW4gUHJvdGVnaWRhPC90ZXh0Pjwvc3ZnPg==" 
+                      "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmM2Y0ZjYiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNlNWU3ZWIiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2EpIi8+PGNpcmNsZSBjeD0iMTYwIiBjeT0iOTAiIHI9IjQwIiBmaWxsPSIjNjM2NmYxIiBvcGFjaXR5PSIwLjgiLz48cmVjdCB4PSIxNDAiIHk9IjEwNSIgd2lkdGg9IjQwIiBoZWlnaHQ9IjI1IiByeD0iOCIgZmlsbD0iIzYzNjZmMSIgb3BhY2l0eT0iMC44Ii8+PHRleHQgeD0iNTAlIiB5PSI3NSUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiM0ZjQ2ZTUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkRhdG9zIEVuY3JpcHRhZG9zPC90ZXh0Pjwvc3ZnPg==" 
                       : image.url
                     } 
                     alt={`Captura ${image.id}`}
-                    className="w-full h-48 object-cover cursor-pointer hover:scale-105 transition-transform duration-300"
+                    className="w-full h-52 object-cover cursor-pointer group-hover:scale-110 transition-transform duration-700"
                     onClick={() => handleImageClick(image)}
                   />
-                  <div className="absolute top-2 right-2 flex gap-2">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  
+                  <div className="absolute top-3 right-3 flex gap-2">
                     {image.isProtected && (
-                      <Badge className="bg-destructive text-destructive-foreground">
-                        <Lock className="w-3 h-3 mr-1" />
-                        Protegida
-                      </Badge>
+                      <div className="px-2 py-1 bg-destructive/90 backdrop-blur-sm rounded-lg border border-destructive/30">
+                        <div className="flex items-center gap-1 text-destructive-foreground text-xs font-medium">
+                          <Lock className="w-3 h-3" />
+                          Encriptado
+                        </div>
+                      </div>
                     )}
-                    <Badge className="bg-black/70 text-white">
-                      {Math.round(image.confidence * 100)}%
-                    </Badge>
+                    <div className="px-2 py-1 bg-gradient-primary/90 backdrop-blur-sm rounded-lg border border-primary/30">
+                      <div className="text-primary-foreground text-xs font-bold">
+                        {Math.round(image.confidence * 100)}% IA
+                      </div>
+                    </div>
                   </div>
                 </div>
                 
-                <CardContent className="p-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Calendar className="w-4 h-4" />
-                      {formatDate(image.timestamp)}
+                <CardContent className="p-5 space-y-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div className="w-6 h-6 bg-accent/20 rounded-md flex items-center justify-center">
+                      <Calendar className="w-3 h-3 text-accent" />
                     </div>
-                    
-                    <div className="flex flex-wrap gap-1">
-                      {image.detections.map((detection, index) => (
-                        <Badge key={index} variant="secondary" className="text-xs">
-                          {detection}
-                        </Badge>
-                      ))}
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => handleImageClick(image)}
-                        className="flex-1"
-                      >
-                        <Eye className="w-3 h-3 mr-1" />
-                        Ver
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => handleDownloadImage(image)}
-                      >
-                        <Download className="w-3 h-3" />
-                      </Button>
-                      <Button 
-                        size="sm" 
-                        variant="outline"
-                        onClick={() => handleDeleteImage(image.id)}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
+                    <span className="font-mono">{formatDate(image.timestamp)}</span>
+                  </div>
+                  
+                  <div className="flex flex-wrap gap-2">
+                    {image.detections.map((detection, index) => (
+                      <div key={index} className="px-2 py-1 bg-secondary/50 backdrop-blur-sm rounded-md border border-secondary/30">
+                        <span className="text-secondary-foreground text-xs font-medium">{detection}</span>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="flex gap-2 pt-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleImageClick(image)}
+                      className="flex-1 border-border/50 hover:bg-primary/10 hover:border-primary/30 transition-all duration-300"
+                    >
+                      <Eye className="w-3 h-3 mr-1" />
+                      Análisis
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleDownloadImage(image)}
+                      className="border-border/50 hover:bg-accent/10 hover:border-accent/30 transition-all duration-300"
+                    >
+                      <Download className="w-3 h-3" />
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => handleDeleteImage(image.id)}
+                      className="border-border/50 hover:bg-destructive/10 hover:border-destructive/30 text-destructive hover:text-destructive transition-all duration-300"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
