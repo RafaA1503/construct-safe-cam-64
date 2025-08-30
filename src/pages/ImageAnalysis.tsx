@@ -301,13 +301,13 @@ OBSERVACIONES ADICIONALES:
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background via-muted/20 to-primary/5 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md shadow-construction border-primary/20">
+        <Card className="w-full max-w-md shadow-lg border">
           <CardHeader className="text-center space-y-4">
-            <div className="mx-auto w-16 h-16 bg-gradient-construction rounded-full flex items-center justify-center shadow-glow">
-              <Lock className="w-8 h-8 text-white" />
+            <div className="mx-auto w-16 h-16 bg-gradient-primary rounded-full flex items-center justify-center shadow-md">
+              <Lock className="w-8 h-8 text-primary-foreground" />
             </div>
             <div>
-              <CardTitle className="text-2xl font-bold bg-gradient-construction bg-clip-text text-transparent">
+              <CardTitle className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
                 Área Restringida
               </CardTitle>
               <p className="text-muted-foreground mt-2">
@@ -325,13 +325,13 @@ OBSERVACIONES ADICIONALES:
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Ingrese la contraseña"
-                  className="border-primary/20 focus:border-primary"
+                  className="focus:ring-primary"
                 />
               </div>
               
               <Button 
                 type="submit" 
-                className="w-full bg-gradient-construction shadow-glow"
+                className="w-full bg-gradient-primary shadow-md"
               >
                 <Shield className="w-4 h-4 mr-2" />
                 Acceder
@@ -359,11 +359,11 @@ OBSERVACIONES ADICIONALES:
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-construction rounded-full flex items-center justify-center shadow-glow">
-              <Construction className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 bg-gradient-primary rounded-full flex items-center justify-center shadow-md">
+              <Construction className="w-5 h-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold bg-gradient-construction bg-clip-text text-transparent">
+              <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
                 Análisis de Imágenes EPP
               </h1>
               <p className="text-muted-foreground">
@@ -378,7 +378,7 @@ OBSERVACIONES ADICIONALES:
         </div>
 
         {/* Upload section */}
-        <Card className="shadow-construction border-primary/20">
+        <Card className="shadow-lg border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Upload className="w-5 h-5 text-primary" />
@@ -402,7 +402,7 @@ OBSERVACIONES ADICIONALES:
               <Button 
                 onClick={triggerFileUpload}
                 disabled={isAnalyzing}
-                className="bg-gradient-construction shadow-glow"
+                className="bg-gradient-primary shadow-md"
                 size="lg"
               >
                 <Upload className="w-4 h-4 mr-2" />
@@ -417,11 +417,11 @@ OBSERVACIONES ADICIONALES:
             {previewImage && (
               <div className="mt-4">
                 <Label className="text-sm font-medium">Vista previa:</Label>
-                <div className="mt-2 border-2 border-dashed border-primary/20 rounded-lg p-4 bg-muted/20">
+                <div className="mt-2 border-2 border-dashed border-muted rounded-lg p-4 bg-muted/50">
                   <img 
                     src={previewImage} 
                     alt="Preview" 
-                    className="max-w-full max-h-64 mx-auto rounded-lg shadow-soft"
+                    className="max-w-full max-h-64 mx-auto rounded-lg shadow-sm"
                   />
                 </div>
               </div>
@@ -433,9 +433,9 @@ OBSERVACIONES ADICIONALES:
         {lastAnalysis && (
           <div className="grid gap-6 md:grid-cols-2">
             {/* EPP Detectados */}
-            <Card className="shadow-construction">
+            <Card className="shadow-lg border">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-green-600">
+                <CardTitle className="flex items-center gap-2 text-accent">
                   <CheckCircle className="w-5 h-5" />
                   EPP Detectados
                   <Badge variant="secondary">{detectedItems.length}</Badge>
@@ -445,7 +445,7 @@ OBSERVACIONES ADICIONALES:
                 {detectedItems.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {detectedItems.map((item, index) => (
-                      <Badge key={index} className="bg-green-100 text-green-800 border-green-200">
+                      <Badge key={index} className="bg-accent/10 text-accent border-accent/20 hover:bg-accent/20">
                         <HardHat className="w-3 h-3 mr-1" />
                         {item}
                       </Badge>
@@ -458,9 +458,9 @@ OBSERVACIONES ADICIONALES:
             </Card>
 
             {/* EPP Faltantes */}
-            <Card className="shadow-construction">
+            <Card className="shadow-lg border">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-red-600">
+                <CardTitle className="flex items-center gap-2 text-destructive">
                   <AlertTriangle className="w-5 h-5" />
                   EPP Faltantes
                   <Badge variant="destructive">{missingItems.length}</Badge>
@@ -477,7 +477,7 @@ OBSERVACIONES ADICIONALES:
                     ))}
                   </div>
                 ) : (
-                  <p className="text-green-600 font-medium">
+                  <p className="text-accent font-medium">
                     ¡Todos los EPP están presentes!
                   </p>
                 )}
@@ -488,7 +488,7 @@ OBSERVACIONES ADICIONALES:
 
         {/* Análisis completo */}
         {lastAnalysis && (
-          <Card className="shadow-construction">
+          <Card className="shadow-lg border">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2">
@@ -507,7 +507,7 @@ OBSERVACIONES ADICIONALES:
                 value={lastAnalysis}
                 readOnly
                 rows={8}
-                className="bg-muted/50 font-mono text-sm border-primary/20"
+                className="bg-muted/50 font-mono text-sm resize-none"
               />
             </CardContent>
           </Card>
