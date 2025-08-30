@@ -421,6 +421,23 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
               <Button
                 variant="outline"
                 size="sm"
+                onClick={() => navigate("/image-analysis")}
+                className="hidden sm:flex"
+              >
+                <Cpu className="w-4 h-4 mr-2" />
+                Análisis EPP
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate("/image-analysis")}
+                className="sm:hidden"
+              >
+                <Cpu className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setIsSpeechEnabled(!isSpeechEnabled)}
                 className={isSpeechEnabled ? 'text-accent' : 'text-muted-foreground'}
               >
