@@ -401,44 +401,52 @@ OBSERVACIONES ADICIONALES:
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-muted/20 to-primary/5 p-4">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-primary rounded-full flex items-center justify-center shadow-md">
-              <Construction className="w-5 h-5 text-primary-foreground" />
+    <div className="min-h-screen bg-gradient-bg p-4">
+      <div className="max-w-5xl mx-auto space-y-8">
+        {/* Header mejorado */}
+        <div className="flex items-center justify-between animate-fade-in">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-gradient-primary rounded-xl flex items-center justify-center shadow-glow animate-pulse-glow">
+              <Construction className="w-6 h-6 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold bg-gradient-primary bg-clip-text text-transparent">
-                Análisis de Imágenes EPP
+              <h1 className="text-3xl font-bold bg-gradient-primary bg-clip-text text-transparent">
+                Análisis Inteligente EPP
               </h1>
-              <p className="text-muted-foreground">
-                Detección automatizada de equipos de protección personal
+              <p className="text-muted-foreground text-lg">
+                Detección automatizada con inteligencia artificial • Incluye botas de seguridad
               </p>
             </div>
           </div>
-          <Button variant="outline" onClick={() => navigate('/')}>
+          <Button variant="outline" onClick={() => navigate('/')} className="shadow-md hover:shadow-lg transition-all">
             <ArrowLeft className="w-4 h-4 mr-2" />
             Volver
           </Button>
         </div>
 
-        {/* Upload section */}
-        <Card className="shadow-lg border">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Upload className="w-5 h-5 text-primary" />
-              Subir Imagen para Análisis
+        {/* Upload section mejorado */}
+        <Card className="shadow-lg border-0 bg-card/80 backdrop-blur-sm animate-scale-in">
+          <CardHeader className="pb-4">
+            <CardTitle className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center">
+                <Upload className="w-4 h-4 text-primary-foreground" />
+              </div>
+              <div className="flex-1">
+                <span className="text-xl font-semibold">Subir Imágenes para Análisis</span>
+                <p className="text-sm text-muted-foreground font-normal mt-1">
+                  Análisis automático de EPP: cascos, chalecos, botas, orejeras y mascarillas
+                </p>
+              </div>
               {isAnalyzing && (
-                <Badge className="bg-primary text-primary-foreground animate-pulse-glow">
-                  Procesando...
+                <Badge className="bg-gradient-primary text-primary-foreground animate-pulse-glow shadow-glow">
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  Procesando {processedCount}/{totalImages}
                 </Badge>
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="text-center">
+          <CardContent className="space-y-6">
+            <div className="text-center space-y-4">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -447,31 +455,54 @@ OBSERVACIONES ADICIONALES:
                 onChange={handleFileUpload}
                 className="hidden"
               />
-              <Button 
-                onClick={triggerFileUpload}
-                disabled={isAnalyzing}
-                className="bg-gradient-primary shadow-md"
-                size="lg"
-              >
-                {isAnalyzing ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Upload className="w-4 h-4 mr-2" />
-                )}
-                {isAnalyzing ? `Procesando ${processedCount}/${totalImages}...` : "Seleccionar Imágenes"}
-              </Button>
-              <p className="text-xs text-muted-foreground mt-2">
-                Formatos soportados: JPG, PNG, WEBP. Selecciona múltiples imágenes para análisis en lote.
-              </p>
-
-              {/* Progress bar */}
-              {isAnalyzing && totalImages > 0 && (
-                <div className="mt-4 space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>Progreso del análisis</span>
-                    <span>{Math.round(processingProgress)}%</span>
+              
+              <div className="relative">
+                <Button 
+                  onClick={triggerFileUpload}
+                  disabled={isAnalyzing}
+                  className="bg-gradient-primary shadow-glow hover:shadow-lg transition-all duration-300 transform hover:scale-105"
+                  size="lg"
+                >
+                  {isAnalyzing ? (
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  ) : (
+                    <Upload className="w-5 h-5 mr-2" />
+                  )}
+                  {isAnalyzing ? `Procesando ${processedCount}/${totalImages}...` : "Seleccionar Imágenes"}
+                </Button>
+                
+                {!isAnalyzing && (
+                  <div className="absolute -top-2 -right-2 w-6 h-6 bg-gradient-success rounded-full flex items-center justify-center animate-bounce-in">
+                    <CheckCircle className="w-3 h-3 text-white" />
                   </div>
-                  <Progress value={processingProgress} className="w-full" />
+                )}
+              </div>
+              
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">
+                  <strong>Análisis inteligente de EPP:</strong> Cascos, chalecos, botas de seguridad, orejeras y mascarillas
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Formatos: JPG, PNG, WEBP • Análisis individual o en lote • Powered by OpenAI
+                </p>
+              </div>
+
+              {/* Progress bar mejorado */}
+              {isAnalyzing && totalImages > 0 && (
+                <div className="mt-6 p-4 bg-muted/50 rounded-lg space-y-3 animate-fade-in">
+                  <div className="flex justify-between items-center text-sm font-medium">
+                    <span className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                      Analizando imágenes...
+                    </span>
+                    <span className="bg-primary/10 text-primary px-2 py-1 rounded-full text-xs">
+                      {Math.round(processingProgress)}%
+                    </span>
+                  </div>
+                  <Progress value={processingProgress} className="w-full h-2" />
+                  <p className="text-xs text-muted-foreground text-center">
+                    Imagen {processedCount} de {totalImages} completada
+                  </p>
                 </div>
               )}
             </div>
@@ -498,74 +529,109 @@ OBSERVACIONES ADICIONALES:
           </CardContent>
         </Card>
 
-        {/* Resultados del análisis */}
+        {/* Resultados del análisis mejorados */}
         {lastAnalysis && (
-          <div className="grid gap-6 md:grid-cols-2">
+          <div className="grid gap-6 lg:grid-cols-2 animate-scale-in">
             {/* EPP Detectados */}
-            <Card className="shadow-lg border">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-accent">
-                  <CheckCircle className="w-5 h-5" />
-                  EPP Detectados
-                  <Badge variant="secondary">{detectedItems.length}</Badge>
+            <Card className="shadow-success border-0 bg-gradient-to-br from-card via-card/90 to-accent/5 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-gradient-success rounded-lg flex items-center justify-center shadow-success">
+                    <CheckCircle className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-lg font-semibold text-accent">EPP Detectados</span>
+                    <p className="text-sm text-muted-foreground font-normal">Equipos encontrados en la imagen</p>
+                  </div>
+                  <Badge className="bg-gradient-success text-white shadow-success animate-bounce-in">
+                    {detectedItems.length}
+                  </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {detectedItems.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {detectedItems.map((item, index) => (
-                      <Badge key={index} className="bg-accent/10 text-accent border-accent/20 hover:bg-accent/20">
+                      <Badge 
+                        key={index} 
+                        className="bg-accent/15 text-accent border-accent/30 hover:bg-accent/25 transition-all duration-200 hover:scale-105 shadow-sm"
+                      >
                         <HardHat className="w-3 h-3 mr-1" />
-                        {item}
+                        {item.charAt(0).toUpperCase() + item.slice(1)}
                       </Badge>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-muted-foreground">No se detectaron EPP</p>
+                  <div className="text-center py-4">
+                    <AlertTriangle className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-muted-foreground">No se detectaron EPP en esta imagen</p>
+                  </div>
                 )}
               </CardContent>
             </Card>
 
             {/* EPP Faltantes */}
-            <Card className="shadow-lg border">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-destructive">
-                  <AlertTriangle className="w-5 h-5" />
-                  EPP Faltantes
-                  <Badge variant="destructive">{missingItems.length}</Badge>
+            <Card className="shadow-danger border-0 bg-gradient-to-br from-card via-card/90 to-destructive/5 backdrop-blur-sm">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-gradient-danger rounded-lg flex items-center justify-center shadow-danger">
+                    <AlertTriangle className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <span className="text-lg font-semibold text-destructive">EPP Faltantes</span>
+                    <p className="text-sm text-muted-foreground font-normal">Equipos requeridos no detectados</p>
+                  </div>
+                  <Badge className={missingItems.length > 0 ? "bg-gradient-danger text-white shadow-danger animate-bounce-in" : "bg-gradient-success text-white shadow-success animate-bounce-in"}>
+                    {missingItems.length}
+                  </Badge>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {missingItems.length > 0 ? (
                   <div className="flex flex-wrap gap-2">
                     {missingItems.map((item, index) => (
-                      <Badge key={index} variant="destructive">
+                      <Badge 
+                        key={index} 
+                        className="bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25 transition-all duration-200 hover:scale-105 shadow-sm"
+                      >
                         <Eye className="w-3 h-3 mr-1" />
-                        {item}
+                        {item.charAt(0).toUpperCase() + item.slice(1)}
                       </Badge>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-accent font-medium">
-                    ¡Todos los EPP están presentes!
-                  </p>
+                  <div className="text-center py-4">
+                    <CheckCircle className="w-8 h-8 text-accent mx-auto mb-2" />
+                    <p className="text-accent font-semibold">
+                      ¡Excelente! Todos los EPP están presentes
+                    </p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      La imagen cumple con los estándares de seguridad
+                    </p>
+                  </div>
                 )}
               </CardContent>
             </Card>
           </div>
         )}
 
-        {/* Análisis completo */}
+        {/* Análisis completo mejorado */}
         {lastAnalysis && (
-          <Card className="shadow-lg border">
-            <CardHeader>
+          <Card className="shadow-glow border-0 bg-gradient-to-br from-card via-card/95 to-primary/5 backdrop-blur-sm animate-scale-in">
+            <CardHeader className="pb-4">
               <CardTitle className="flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <ImageIcon className="w-5 h-5 text-primary" />
-                  Análisis Detallado
-                </span>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-gradient-primary rounded-lg flex items-center justify-center shadow-glow">
+                    <ImageIcon className="w-5 h-5 text-primary-foreground" />
+                  </div>
+                  <div>
+                    <span className="text-xl font-semibold">Análisis Detallado con IA</span>
+                    <p className="text-sm text-muted-foreground font-normal">Reporte completo generado por OpenAI</p>
+                  </div>
+                </div>
                 {confidence > 0 && (
-                  <Badge variant="outline" className="border-primary text-primary">
+                  <Badge className="bg-gradient-primary text-primary-foreground border-0 shadow-glow animate-pulse-glow">
+                    <CheckCircle className="w-3 h-3 mr-1" />
                     {Math.round(confidence * 100)}% confianza
                   </Badge>
                 )}
