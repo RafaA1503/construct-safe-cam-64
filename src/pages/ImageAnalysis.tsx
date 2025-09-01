@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { 
   Upload, 
   Lock, 
@@ -15,7 +16,8 @@ import {
   ImageIcon,
   ArrowLeft,
   HardHat,
-  Construction
+  Construction,
+  Loader2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -29,7 +31,10 @@ const ImageAnalysis = () => {
   const [confidence, setConfidence] = useState<number>(0);
   const [detectedItems, setDetectedItems] = useState<string[]>([]);
   const [missingItems, setMissingItems] = useState<string[]>([]);
-  const [previewImage, setPreviewImage] = useState<string>("");
+  const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processedCount, setProcessedCount] = useState(0);
+  const [totalImages, setTotalImages] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -54,7 +59,7 @@ const ImageAnalysis = () => {
     }
   };
 
-  const analyzeImageWithOpenAI = async (imageData: string) => {
+const analyzeImageWithOpenAI = async (imageData: string) => {
     const openaiApiKey = localStorage.getItem('openai_api_key');
     
     if (!openaiApiKey) {
@@ -66,7 +71,9 @@ const ImageAnalysis = () => {
       return null;
     }
 
-    const customPrompt = `Analiza esta imagen y detecta los siguientes equipos de protección personal (EPP):
+    // Read custom prompt from localStorage, fallback to default
+    const savedPrompt = localStorage.getItem('detection_prompt');
+    const customPrompt = savedPrompt || `Analiza esta imagen y detecta los siguientes equipos de protección personal (EPP):
 - Casco de seguridad
 - Chaleco reflectivo o de alta visibilidad
 - Botas de seguridad
@@ -95,7 +102,7 @@ OBSERVACIONES ADICIONALES:
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4-vision-preview',
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'user',
@@ -113,13 +120,13 @@ OBSERVACIONES ADICIONALES:
               ]
             }
           ],
-          max_tokens: 1000,
-          temperature: 0.1
+          max_tokens: 1000
         })
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`OpenAI API Error (${response.status}): ${errorData.error?.message || response.statusText}`);
       }
 
       const data = await response.json();
@@ -153,7 +160,7 @@ OBSERVACIONES ADICIONALES:
       console.error('Error al analizar imagen:', error);
       toast({
         title: "Error de análisis",
-        description: "No se pudo procesar la imagen con OpenAI",
+        description: error instanceof Error ? error.message : "No se pudo procesar la imagen con OpenAI",
         variant: "destructive",
       });
       return null;
@@ -221,76 +228,116 @@ OBSERVACIONES ADICIONALES:
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
 
-    if (!file.type.startsWith('image/')) {
+    // Validate all files are images
+    const invalidFiles = files.filter(file => !file.type.startsWith('image/'));
+    if (invalidFiles.length > 0) {
       toast({
         title: "Error de archivo",
-        description: "Por favor seleccione una imagen válida",
+        description: "Por favor seleccione solo imágenes válidas",
         variant: "destructive",
       });
       return;
     }
 
     setIsAnalyzing(true);
+    setTotalImages(files.length);
+    setProcessedCount(0);
+    setProcessingProgress(0);
+
+    // Create previews for all images
+    const previews = await Promise.all(
+      files.map(file => new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.readAsDataURL(file);
+      }))
+    );
+    setPreviewImages(previews);
+
+    const results = [];
+    let allDetections: string[] = [];
+    let allMissing: string[] = [];
 
     try {
-      // Crear preview de la imagen
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPreviewImage(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+      // Process each image sequentially to avoid rate limits
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        
+        toast({
+          title: `Procesando imagen ${i + 1} de ${files.length}`,
+          description: `Analizando: ${file.name}`,
+        });
 
-      // Subir imagen al almacenamiento
-      const imageUrl = await uploadImageToStorage(file);
-      if (!imageUrl) {
-        setIsAnalyzing(false);
-        return;
-      }
+        // Upload image to storage
+        const imageUrl = await uploadImageToStorage(file);
+        if (!imageUrl) {
+          console.error(`Failed to upload image: ${file.name}`);
+          continue;
+        }
 
-      // Analizar imagen con OpenAI
-      const imageDataUrl = await new Promise<string>((resolve) => {
-        const fileReader = new FileReader();
-        fileReader.onload = (e) => resolve(e.target?.result as string);
-        fileReader.readAsDataURL(file);
-      });
+        // Convert to base64 for OpenAI
+        const imageDataUrl = await new Promise<string>((resolve) => {
+          const fileReader = new FileReader();
+          fileReader.onload = (e) => resolve(e.target?.result as string);
+          fileReader.readAsDataURL(file);
+        });
 
-      const result = await analyzeImageWithOpenAI(imageDataUrl);
-      
-      if (result) {
-        setLastAnalysis(result.analysis);
-        setConfidence(result.confidence);
-        setDetectedItems(result.detections);
-        setMissingItems(result.missing);
+        // Analyze with OpenAI
+        const result = await analyzeImageWithOpenAI(imageDataUrl);
+        
+        if (result) {
+          // Save to database
+          await saveToDatabase(
+            imageUrl,
+            result.detections,
+            result.missing,
+            result.confidence,
+            result.analysis
+          );
 
-        // Guardar en la base de datos
-        const saved = await saveToDatabase(
-          imageUrl,
-          result.detections,
-          result.missing,
-          result.confidence,
-          result.analysis
-        );
+          results.push(result);
+          allDetections = [...new Set([...allDetections, ...result.detections])];
+          allMissing = [...new Set([...allMissing, ...result.missing])];
+        }
 
-        if (saved) {
-          toast({
-            title: "Análisis completado",
-            description: `Imagen procesada y guardada. Detectados ${result.detections.length} EPP, faltan ${result.missing.length}`,
-          });
+        setProcessedCount(i + 1);
+        setProcessingProgress(((i + 1) / files.length) * 100);
+
+        // Add small delay to avoid rate limits
+        if (i < files.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
 
+      // Update UI with combined results from last processed batch
+      if (results.length > 0) {
+        const lastResult = results[results.length - 1];
+        setLastAnalysis(lastResult.analysis);
+        setConfidence(lastResult.confidence);
+        setDetectedItems(allDetections);
+        setMissingItems(allMissing.filter(item => !allDetections.includes(item)));
+
+        toast({
+          title: "Análisis completado",
+          description: `${results.length} imágenes procesadas. Detectados ${allDetections.length} tipos de EPP únicos`,
+        });
+      }
+
     } catch (error) {
-      console.error('Error processing image:', error);
+      console.error('Error processing images:', error);
       toast({
         title: "Error de procesamiento",
-        description: "No se pudo procesar la imagen completa",
+        description: "Error al procesar las imágenes",
         variant: "destructive",
       });
     } finally {
       setIsAnalyzing(false);
+      setProcessingProgress(0);
+      setProcessedCount(0);
+      setTotalImages(0);
     }
   };
 
@@ -396,6 +443,7 @@ OBSERVACIONES ADICIONALES:
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 onChange={handleFileUpload}
                 className="hidden"
               />
@@ -405,24 +453,45 @@ OBSERVACIONES ADICIONALES:
                 className="bg-gradient-primary shadow-md"
                 size="lg"
               >
-                <Upload className="w-4 h-4 mr-2" />
-                {isAnalyzing ? "Procesando..." : "Seleccionar Imagen"}
+                {isAnalyzing ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4 mr-2" />
+                )}
+                {isAnalyzing ? `Procesando ${processedCount}/${totalImages}...` : "Seleccionar Imágenes"}
               </Button>
               <p className="text-xs text-muted-foreground mt-2">
-                Formatos soportados: JPG, PNG, WEBP (máx. 10MB)
+                Formatos soportados: JPG, PNG, WEBP. Selecciona múltiples imágenes para análisis en lote.
               </p>
+
+              {/* Progress bar */}
+              {isAnalyzing && totalImages > 0 && (
+                <div className="mt-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>Progreso del análisis</span>
+                    <span>{Math.round(processingProgress)}%</span>
+                  </div>
+                  <Progress value={processingProgress} className="w-full" />
+                </div>
+              )}
             </div>
 
-            {/* Preview de la imagen */}
-            {previewImage && (
+            {/* Preview de las imágenes */}
+            {previewImages.length > 0 && (
               <div className="mt-4">
-                <Label className="text-sm font-medium">Vista previa:</Label>
-                <div className="mt-2 border-2 border-dashed border-muted rounded-lg p-4 bg-muted/50">
-                  <img 
-                    src={previewImage} 
-                    alt="Preview" 
-                    className="max-w-full max-h-64 mx-auto rounded-lg shadow-sm"
-                  />
+                <Label className="text-sm font-medium">
+                  Vista previa ({previewImages.length} imagen{previewImages.length !== 1 ? 'es' : ''}):
+                </Label>
+                <div className="mt-2 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {previewImages.map((preview, index) => (
+                    <div key={index} className="border-2 border-dashed border-muted rounded-lg p-2 bg-muted/50">
+                      <img 
+                        src={preview} 
+                        alt={`Preview ${index + 1}`} 
+                        className="w-full h-32 object-cover rounded-lg shadow-sm"
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
