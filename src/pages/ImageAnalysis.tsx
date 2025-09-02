@@ -64,8 +64,24 @@ const analyzeImageWithOpenAI = async (imageData: string) => {
     
     if (!openaiApiKey) {
       toast({
-        title: "Error de configuración",
-        description: "API Key de OpenAI no configurada. Ve a Configuración para agregarla.",
+        title: "Configuración requerida",
+        description: "Configura tu API Key de OpenAI en Configuración antes de continuar.",
+        variant: "destructive",
+      });
+      
+      // Navigate to settings after 2 seconds
+      setTimeout(() => {
+        navigate('/settings');
+      }, 2000);
+      
+      return null;
+    }
+
+    // Validate API key format
+    if (!openaiApiKey.startsWith('sk-')) {
+      toast({
+        title: "API Key inválida",
+        description: "La API Key debe comenzar con 'sk-'. Verifica en Configuración.",
         variant: "destructive",
       });
       return null;
@@ -75,10 +91,12 @@ const analyzeImageWithOpenAI = async (imageData: string) => {
     const savedPrompt = localStorage.getItem('detection_prompt');
     const customPrompt = savedPrompt || `Analiza esta imagen y detecta los siguientes equipos de protección personal (EPP):
 - Casco de seguridad
-- Chaleco reflectivo o de alta visibilidad
-- Botas de seguridad
+- Chaleco reflectivo o de alta visibilidad  
+- Botas de seguridad (incluye cualquier tipo de calzado de protección)
 - Orejeras o protección auditiva
 - Mascarilla o protección respiratoria
+- Gafas de seguridad
+- Guantes de protección
 
 Para cada EPP, indica si está presente o ausente. Proporciona una lista clara de los EPP detectados y los que faltan. También indica el nivel de confianza en porcentaje.
 
@@ -95,6 +113,8 @@ OBSERVACIONES ADICIONALES:
 [cualquier observación relevante sobre la seguridad]`;
 
     try {
+      console.log('Enviando solicitud a OpenAI...');
+      
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -124,12 +144,29 @@ OBSERVACIONES ADICIONALES:
         })
       });
 
+      console.log('Respuesta de OpenAI:', response.status);
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
-        throw new Error(`OpenAI API Error (${response.status}): ${errorData.error?.message || response.statusText}`);
+        console.error('Error de OpenAI:', errorData);
+        
+        let errorMessage = 'Error desconocido';
+        if (response.status === 401) {
+          errorMessage = 'API Key inválida. Verifica tu configuración.';
+        } else if (response.status === 429) {
+          errorMessage = 'Límite de uso excedido. Espera unos minutos.';
+        } else if (response.status === 400) {
+          errorMessage = 'Solicitud inválida. La imagen podría ser muy grande.';
+        } else if (errorData.error?.message) {
+          errorMessage = errorData.error.message;
+        }
+        
+        throw new Error(`OpenAI API Error (${response.status}): ${errorMessage}`);
       }
 
       const data = await response.json();
+      console.log('Análisis completado exitosamente');
+      
       const analysis = data.choices[0].message.content;
       
       // Procesar la respuesta para extraer detecciones
@@ -138,7 +175,7 @@ OBSERVACIONES ADICIONALES:
       
       if (lowerAnalysis.includes('casco')) ppeFound.push('casco');
       if (lowerAnalysis.includes('chaleco')) ppeFound.push('chaleco');
-      if (lowerAnalysis.includes('botas')) ppeFound.push('botas');
+      if (lowerAnalysis.includes('botas') || lowerAnalysis.includes('calzado')) ppeFound.push('botas');
       if (lowerAnalysis.includes('orejeras') || lowerAnalysis.includes('auditiva')) ppeFound.push('orejeras');
       if (lowerAnalysis.includes('mascarilla') || lowerAnalysis.includes('máscara')) ppeFound.push('mascarilla');
 
@@ -157,10 +194,10 @@ OBSERVACIONES ADICIONALES:
       };
 
     } catch (error) {
-      console.error('Error al analizar imagen:', error);
+      console.error('Error completo al analizar imagen:', error);
       toast({
         title: "Error de análisis",
-        description: error instanceof Error ? error.message : "No se pudo procesar la imagen con OpenAI",
+        description: error instanceof Error ? error.message : "No se pudo procesar la imagen con OpenAI. Verifica tu conexión e intenta nuevamente.",
         variant: "destructive",
       });
       return null;
