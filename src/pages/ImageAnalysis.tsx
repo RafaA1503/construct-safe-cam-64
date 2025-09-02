@@ -227,6 +227,58 @@ OBSERVACIONES ADICIONALES:
     }
   };
 
+  // Function to compress and standardize image for better detection
+  const processImageForAnalysis = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        // Standardize image size for consistent detection
+        const MAX_SIZE = 1024;
+        let { width, height } = img;
+        
+        // Calculate new dimensions maintaining aspect ratio
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = (height * MAX_SIZE) / width;
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = (width * MAX_SIZE) / height;
+            height = MAX_SIZE;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Draw and compress image
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        // Convert to high-quality JPEG for consistent analysis
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        resolve(compressedDataUrl);
+      };
+      
+      img.onerror = () => {
+        // Fallback to original file if processing fails
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.readAsDataURL(file);
+      };
+      
+      // Load original image
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
     if (files.length === 0) return;
@@ -242,18 +294,23 @@ OBSERVACIONES ADICIONALES:
       return;
     }
 
+    // Validate file sizes (max 10MB per file)
+    const oversizedFiles = files.filter(file => file.size > 10 * 1024 * 1024);
+    if (oversizedFiles.length > 0) {
+      toast({
+        title: "Archivos demasiado grandes",
+        description: `${oversizedFiles.length} archivo(s) exceden 10MB. Se procesarán con compresión automática.`,
+      });
+    }
+
     setIsAnalyzing(true);
     setTotalImages(files.length);
     setProcessedCount(0);
     setProcessingProgress(0);
 
-    // Create previews for all images
+    // Create previews for all images (using processed versions)
     const previews = await Promise.all(
-      files.map(file => new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve(e.target?.result as string);
-        reader.readAsDataURL(file);
-      }))
+      files.map(file => processImageForAnalysis(file))
     );
     setPreviewImages(previews);
 
@@ -268,27 +325,27 @@ OBSERVACIONES ADICIONALES:
         
         toast({
           title: `Procesando imagen ${i + 1} de ${files.length}`,
-          description: `Analizando: ${file.name}`,
+          description: `Analizando: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)}MB)`,
         });
 
-        // Upload image to storage
+        // Upload original image to storage
         const imageUrl = await uploadImageToStorage(file);
         if (!imageUrl) {
           console.error(`Failed to upload image: ${file.name}`);
           continue;
         }
 
-        // Convert to base64 for OpenAI
-        const imageDataUrl = await new Promise<string>((resolve) => {
-          const fileReader = new FileReader();
-          fileReader.onload = (e) => resolve(e.target?.result as string);
-          fileReader.readAsDataURL(file);
-        });
+        // Process image for OpenAI analysis (compressed and standardized)
+        const processedImageDataUrl = await processImageForAnalysis(file);
 
-        // Analyze with OpenAI
-        const result = await analyzeImageWithOpenAI(imageDataUrl);
+        console.log(`Processing image ${i + 1}: ${file.name}, size: ${file.size} bytes, type: ${file.type}`);
+
+        // Analyze with OpenAI using processed image
+        const result = await analyzeImageWithOpenAI(processedImageDataUrl);
         
         if (result) {
+          console.log(`Analysis result for ${file.name}:`, result);
+          
           // Save to database
           await saveToDatabase(
             imageUrl,
@@ -301,14 +358,16 @@ OBSERVACIONES ADICIONALES:
           results.push(result);
           allDetections = [...new Set([...allDetections, ...result.detections])];
           allMissing = [...new Set([...allMissing, ...result.missing])];
+        } else {
+          console.error(`No analysis result for ${file.name}`);
         }
 
         setProcessedCount(i + 1);
         setProcessingProgress(((i + 1) / files.length) * 100);
 
-        // Add small delay to avoid rate limits
+        // Add delay to avoid rate limits (longer delay for PC uploads)
         if (i < files.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          await new Promise(resolve => setTimeout(resolve, 1500));
         }
       }
 
@@ -321,8 +380,14 @@ OBSERVACIONES ADICIONALES:
         setMissingItems(allMissing.filter(item => !allDetections.includes(item)));
 
         toast({
-          title: "Análisis completado",
+          title: "Análisis completado exitosamente",
           description: `${results.length} imágenes procesadas. Detectados ${allDetections.length} tipos de EPP únicos`,
+        });
+      } else {
+        toast({
+          title: "Sin resultados",
+          description: "No se pudo analizar ninguna imagen. Verifique la configuración de OpenAI.",
+          variant: "destructive",
         });
       }
 
@@ -330,7 +395,7 @@ OBSERVACIONES ADICIONALES:
       console.error('Error processing images:', error);
       toast({
         title: "Error de procesamiento",
-        description: "Error al procesar las imágenes",
+        description: "Error al procesar las imágenes. Intente con imágenes más pequeñas.",
         variant: "destructive",
       });
     } finally {
