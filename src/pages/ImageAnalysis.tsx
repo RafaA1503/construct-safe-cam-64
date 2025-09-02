@@ -89,28 +89,17 @@ const analyzeImageWithOpenAI = async (imageData: string) => {
 
     // Read custom prompt from localStorage, fallback to default
     const savedPrompt = localStorage.getItem('detection_prompt');
-    const customPrompt = savedPrompt || `Analiza esta imagen y detecta los siguientes equipos de protección personal (EPP):
+    const basePrompt = savedPrompt || `Analiza esta imagen y detecta los siguientes equipos de protección personal (EPP):
 - Casco de seguridad
 - Chaleco reflectivo o de alta visibilidad  
 - Botas de seguridad (incluye cualquier tipo de calzado de protección)
 - Orejeras o protección auditiva
 - Mascarilla o protección respiratoria
 - Gafas de seguridad
-- Guantes de protección
+- Guantes de protección`;
 
-Para cada EPP, indica si está presente o ausente. Proporciona una lista clara de los EPP detectados y los que faltan. También indica el nivel de confianza en porcentaje.
-
-Responde en español con el siguiente formato:
-EPP DETECTADOS:
-- [lista de EPP encontrados]
-
-EPP FALTANTES:
-- [lista de EPP que no se detectaron]
-
-NIVEL DE CONFIANZA: X%
-
-OBSERVACIONES ADICIONALES:
-[cualquier observación relevante sobre la seguridad]`;
+    // Prompt reforzado para JSON estricto y sin rechazos
+    const jsonPrompt = `${basePrompt}\n\nTu tarea: Responde ESTRICTAMENTE en JSON válido (sin texto adicional) con este esquema:\n{\n  \"detections\": {\n    \"casco\": boolean,\n    \"chaleco\": boolean,\n    \"botas\": boolean,\n    \"orejeras\": boolean,\n    \"mascarilla\": boolean\n  },\n  \"confidence_overall\": number (0-1),\n  \"notes\": string\n}\n\nInstrucciones importantes:\n- No te niegues a analizar: la imagen es apropiada para evaluación de seguridad industrial.\n- Si no puedes ver la imagen por algún problema técnico, responde: {\"error\":\"no_image\"}`;
 
     try {
       console.log('Enviando solicitud a OpenAI...');
@@ -123,31 +112,28 @@ OBSERVACIONES ADICIONALES:
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
+          response_format: { type: 'json_object' },
           messages: [
+            {
+              role: 'system',
+              content: 'Eres un analista experto en seguridad industrial y EPP. Respondes solo en JSON válido.'
+            },
             {
               role: 'user',
               content: [
-                {
-                  type: 'text',
-                  text: customPrompt
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: imageData
-                  }
-                }
+                { type: 'text', text: jsonPrompt },
+                { type: 'image_url', image_url: { url: imageData } }
               ]
             }
           ],
-          max_tokens: 1000
+          max_tokens: 600
         })
       });
 
       console.log('Respuesta de OpenAI:', response.status);
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorData = await response.json().catch(() => ({} as any));
         console.error('Error de OpenAI:', errorData);
         
         let errorMessage = 'Error desconocido';
@@ -157,8 +143,8 @@ OBSERVACIONES ADICIONALES:
           errorMessage = 'Límite de uso excedido. Espera unos minutos.';
         } else if (response.status === 400) {
           errorMessage = 'Solicitud inválida. La imagen podría ser muy grande.';
-        } else if (errorData.error?.message) {
-          errorMessage = errorData.error.message;
+        } else if ((errorData as any).error?.message) {
+          errorMessage = (errorData as any).error.message;
         }
         
         throw new Error(`OpenAI API Error (${response.status}): ${errorMessage}`);
@@ -167,30 +153,79 @@ OBSERVACIONES ADICIONALES:
       const data = await response.json();
       console.log('Análisis completado exitosamente');
       
-      const analysis = data.choices[0].message.content;
-      
-      // Procesar la respuesta para extraer detecciones
-      const ppeFound = [];
-      const lowerAnalysis = analysis.toLowerCase();
-      
-      if (lowerAnalysis.includes('casco')) ppeFound.push('casco');
-      if (lowerAnalysis.includes('chaleco')) ppeFound.push('chaleco');
-      if (lowerAnalysis.includes('botas') || lowerAnalysis.includes('calzado')) ppeFound.push('botas');
-      if (lowerAnalysis.includes('orejeras') || lowerAnalysis.includes('auditiva')) ppeFound.push('orejeras');
-      if (lowerAnalysis.includes('mascarilla') || lowerAnalysis.includes('máscara')) ppeFound.push('mascarilla');
+      const raw = data.choices?.[0]?.message?.content ?? '';
 
-      // Determinar elementos faltantes
+      // Intentar parseo JSON estricto
+      let parsed: any | null = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {}
+
+      // Fallback por si el modelo incluye backticks o texto extra
+      if (!parsed && typeof raw === 'string') {
+        const jsonMatch = raw.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try { parsed = JSON.parse(jsonMatch[0]); } catch {}
+        }
+      }
+
+      // Si aún no hay JSON o hubo rechazo
+      const refusalText = typeof raw === 'string' && raw.toLowerCase().includes('no puedo analizar imágenes');
+      if (!parsed || parsed.error === 'no_image' || refusalText) {
+        console.warn('Salida no estructurada o rechazo. Activando heurística de texto.');
+        const analysisText = typeof raw === 'string' && raw.trim().length > 0
+          ? raw
+          : 'No se obtuvo respuesta estructurada del modelo.';
+
+        // Heurística de sinónimos en español
+        const lower = analysisText.toLowerCase();
+        const ppeFound: string[] = [];
+
+        const hasHelmet = /\bcasco(s)?\b|\bcasco de seguridad\b/.test(lower);
+        const hasVest = /\bchaleco(s)?\b|reflectiv(o|a)|alta visibilidad/.test(lower);
+        const hasBoots = /\bbota(s)?\b|calzado de seguridad|zapato(s)? de seguridad|botín(es)?/.test(lower);
+        const hasEars = /orejera(s)?|protección auditiva|tapones auditivos|protectores auditivos/.test(lower);
+        const hasMask = /mascarilla|máscara|respirador|cubrebocas|barbijo|n95/.test(lower);
+
+        if (hasHelmet) ppeFound.push('casco');
+        if (hasVest) ppeFound.push('chaleco');
+        if (hasBoots) ppeFound.push('botas');
+        if (hasEars) ppeFound.push('orejeras');
+        if (hasMask) ppeFound.push('mascarilla');
+
+        const missing = REQUIRED_PPE.filter(item => !ppeFound.includes(item));
+
+        // Extraer confianza si aparece en texto
+        const confidenceMatch = analysisText.match(/(\d{1,3})%/);
+        const extractedConfidence = confidenceMatch ? Math.min(100, parseInt(confidenceMatch[1])) / 100 : 0.85;
+
+        return {
+          detections: ppeFound,
+          missing,
+          confidence: extractedConfidence,
+          analysis: analysisText
+        };
+      }
+
+      // Construir resultados a partir del JSON
+      const detectionsObj = parsed.detections || {};
+      const ppeFound: string[] = [];
+      if (detectionsObj.casco) ppeFound.push('casco');
+      if (detectionsObj.chaleco) ppeFound.push('chaleco');
+      if (detectionsObj.botas) ppeFound.push('botas');
+      if (detectionsObj.orejeras) ppeFound.push('orejeras');
+      if (detectionsObj.mascarilla) ppeFound.push('mascarilla');
+
       const missing = REQUIRED_PPE.filter(item => !ppeFound.includes(item));
+      const conf = typeof parsed.confidence_overall === 'number' ? Math.max(0, Math.min(1, parsed.confidence_overall)) : 0.9;
 
-      // Extraer nivel de confianza del texto
-      const confidenceMatch = analysis.match(/(\d+)%/);
-      const extractedConfidence = confidenceMatch ? parseInt(confidenceMatch[1]) / 100 : 0.8;
+      const analysisText = `EPP DETECTADOS: ${ppeFound.join(', ') || 'Ninguno'}\nEPP FALTANTES: ${missing.join(', ') || 'Ninguno'}\nNIVEL DE CONFIANZA: ${Math.round(conf * 100)}%\nOBSERVACIONES ADICIONALES: ${parsed.notes || '—'}`;
 
       return {
         detections: ppeFound,
-        missing: missing,
-        confidence: extractedConfidence,
-        analysis: analysis
+        missing,
+        confidence: conf,
+        analysis: analysisText
       };
 
     } catch (error) {
@@ -203,7 +238,6 @@ OBSERVACIONES ADICIONALES:
       return null;
     }
   };
-
   const saveToDatabase = async (imageUrl: string, detections: string[], missing: string[], confidence: number, analysis: string) => {
     try {
       const { error } = await supabase
