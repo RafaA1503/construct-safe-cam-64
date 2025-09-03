@@ -5,11 +5,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Images, Lock, ArrowLeft, Download, Trash2, Eye, Calendar, Shield, RefreshCw } from "lucide-react";
+import { Images, Lock, ArrowLeft, Download, Trash2, Eye, Calendar, Shield, RefreshCw, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { ImagePasswordDialog } from "@/components/ui/image-password-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { migrateLocalImagesToSupabase } from "@/utils/migrateImages";
 
 interface CapturedImage {
@@ -30,6 +31,8 @@ const Gallery = () => {
   const [isMigrating, setIsMigrating] = useState(false);
   const [imagePasswordDialog, setImagePasswordDialog] = useState<{isOpen: boolean, imageId: string}>({isOpen: false, imageId: ""});
   const [unlockedImages, setUnlockedImages] = useState<Set<string>>(new Set());
+  const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -250,6 +253,11 @@ const Gallery = () => {
         newSet.delete(imageId);
         return newSet;
       });
+      setSelectedImages(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(imageId);
+        return newSet;
+      });
       
       toast({
         title: "Imagen eliminada completamente",
@@ -262,6 +270,91 @@ const Gallery = () => {
         description: "No se pudo eliminar la imagen completamente",
         variant: "destructive",
       });
+    }
+  };
+
+  const handleDeleteSelectedImages = async () => {
+    if (selectedImages.size === 0) return;
+
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const imageIds = Array.from(selectedImages);
+      
+      // Find images to get storage paths
+      const imagesToDelete = images.filter(img => imageIds.includes(img.id));
+      
+      // Delete from database
+      const { error: dbError } = await supabase
+        .from('captured_images')
+        .delete()
+        .in('id', imageIds);
+      
+      if (dbError) {
+        console.error("Error deleting from database:", dbError);
+        throw dbError;
+      }
+      
+      // Delete from storage
+      const filesToDelete = imagesToDelete
+        .filter(img => img.url && img.url.includes('supabase.co'))
+        .map(img => {
+          const urlParts = img.url.split('/');
+          return urlParts[urlParts.length - 1];
+        });
+      
+      if (filesToDelete.length > 0) {
+        const { error: storageError } = await supabase.storage
+          .from('epp-images')
+          .remove(filesToDelete);
+        
+        if (storageError) {
+          console.error("Error deleting from storage:", storageError);
+          // Don't throw here as the DB deletion was successful
+        }
+      }
+      
+      // Update local state
+      setImages(prev => prev.filter(img => !imageIds.includes(img.id)));
+      setSelectedImage(null);
+      setSelectedImages(new Set());
+      setIsSelectionMode(false);
+      setUnlockedImages(prev => {
+        const newSet = new Set(prev);
+        imageIds.forEach(id => newSet.delete(id));
+        return newSet;
+      });
+      
+      toast({
+        title: "Imágenes eliminadas",
+        description: `${imageIds.length} imágenes eliminadas exitosamente`,
+      });
+    } catch (error) {
+      console.error("Error deleting images:", error);
+      toast({
+        title: "Error al eliminar",
+        description: "No se pudieron eliminar todas las imágenes",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleImageSelection = (imageId: string, checked: boolean) => {
+    setSelectedImages(prev => {
+      const newSet = new Set(prev);
+      if (checked) {
+        newSet.add(imageId);
+      } else {
+        newSet.delete(imageId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedImages(new Set(images.map(img => img.id)));
+    } else {
+      setSelectedImages(new Set());
     }
   };
 
@@ -424,6 +517,50 @@ const Gallery = () => {
                   {images.length} Capturas Activas
                 </div>
               </div>
+              {!isSelectionMode ? (
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsSelectionMode(true)}
+                  className="border-border/50 hover:bg-muted/50 hover:border-primary/30 transition-all duration-300"
+                >
+                  <Check className="w-4 h-4 mr-2" />
+                  Seleccionar
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIsSelectionMode(false);
+                      setSelectedImages(new Set());
+                    }}
+                    className="border-border/50 hover:bg-muted/50 hover:border-primary/30 transition-all duration-300"
+                  >
+                    Cancelar
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleSelectAll(selectedImages.size !== images.length)}
+                    className="border-border/50 hover:bg-muted/50 hover:border-primary/30 transition-all duration-300"
+                  >
+                    {selectedImages.size === images.length ? 'Deseleccionar Todo' : 'Seleccionar Todo'}
+                  </Button>
+                  {selectedImages.size > 0 && (
+                    <Button 
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleDeleteSelectedImages}
+                      className="transition-all duration-300"
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Eliminar ({selectedImages.size})
+                    </Button>
+                  )}
+                </div>
+              )}
               <Button 
                 variant="outline"
                 size="sm"
@@ -472,8 +609,17 @@ const Gallery = () => {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
             {images.map((image) => (
-              <Card key={image.id} className="group overflow-hidden bg-card/70 backdrop-blur-sm border-border/30 hover:bg-card/90 hover:shadow-2xl hover:shadow-primary/10 hover:border-primary/20 transition-all duration-500 hover:scale-105">
+              <Card key={image.id} className={`group overflow-hidden bg-card/70 backdrop-blur-sm border-border/30 hover:bg-card/90 hover:shadow-2xl hover:shadow-primary/10 hover:border-primary/20 transition-all duration-500 hover:scale-105 ${selectedImages.has(image.id) ? 'ring-2 ring-primary border-primary' : ''}`}>
                 <div className="relative overflow-hidden">
+                  {isSelectionMode && (
+                    <div className="absolute top-3 left-3 z-10">
+                      <Checkbox
+                        checked={selectedImages.has(image.id)}
+                        onCheckedChange={(checked) => handleImageSelection(image.id, checked as boolean)}
+                        className="bg-background/80 backdrop-blur-sm"
+                      />
+                    </div>
+                  )}
                   <img 
                     src={image.isProtected && !unlockedImages.has(image.id) ? 
                       "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIwIiBoZWlnaHQ9IjE4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9ImEiIHgxPSIwJSIgeTE9IjAlIiB4Mj0iMTAwJSIgeTI9IjEwMCUiPjxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmM2Y0ZjYiLz48c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNlNWU3ZWIiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2EpIi8+PGNpcmNsZSBjeD0iMTYwIiBjeT0iOTAiIHI9IjQwIiBmaWxsPSIjNjM2NmYxIiBvcGFjaXR5PSIwLjgiLz48cmVjdCB4PSIxNDAiIHk9IjEwNSIgd2lkdGg9IjQwIiBoZWlnaHQ9IjI1IiByeD0iOCIgZmlsbD0iIzYzNjZmMSIgb3BhY2l0eT0iMC44Ii8+PHRleHQgeD0iNTAlIiB5PSI3NSUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxNCIgZm9udC13ZWlnaHQ9ImJvbGQiIGZpbGw9IiM0ZjQ2ZTUiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkRhdG9zIEVuY3JpcHRhZG9zPC90ZXh0Pjwvc3ZnPg==" 
@@ -481,7 +627,7 @@ const Gallery = () => {
                     } 
                     alt={`Captura ${image.id}`}
                     className="w-full h-52 object-cover cursor-pointer group-hover:scale-110 transition-transform duration-700"
-                    onClick={() => handleImageClick(image)}
+                    onClick={() => isSelectionMode ? handleImageSelection(image.id, !selectedImages.has(image.id)) : handleImageClick(image)}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   
@@ -518,33 +664,35 @@ const Gallery = () => {
                     ))}
                   </div>
                   
-                  <div className="flex gap-2 pt-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleImageClick(image)}
-                      className="flex-1 border-border/50 hover:bg-primary/10 hover:border-primary/30 transition-all duration-300"
-                    >
-                      <Eye className="w-3 h-3 mr-1" />
-                      Análisis
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleDownloadImage(image)}
-                      className="border-border/50 hover:bg-accent/10 hover:border-accent/30 transition-all duration-300"
-                    >
-                      <Download className="w-3 h-3" />
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="outline"
-                      onClick={() => handleDeleteImage(image.id)}
-                      className="border-border/50 hover:bg-destructive/10 hover:border-destructive/30 text-destructive hover:text-destructive transition-all duration-300"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </Button>
-                  </div>
+                  {!isSelectionMode && (
+                    <div className="flex gap-2 pt-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleImageClick(image)}
+                        className="flex-1 border-border/50 hover:bg-primary/10 hover:border-primary/30 transition-all duration-300"
+                      >
+                        <Eye className="w-3 h-3 mr-1" />
+                        Análisis
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleDownloadImage(image)}
+                        className="border-border/50 hover:bg-accent/10 hover:border-accent/30 transition-all duration-300"
+                      >
+                        <Download className="w-3 h-3" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleDeleteImage(image.id)}
+                        className="border-border/50 hover:bg-destructive/10 hover:border-destructive/30 text-destructive hover:text-destructive transition-all duration-300"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             ))}
