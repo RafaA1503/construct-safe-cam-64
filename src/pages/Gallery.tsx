@@ -274,15 +274,16 @@ const Gallery = () => {
     }
   };
 
-  const handleDeleteSelectedImages = async () => {
-    if (selectedImages.size === 0) return;
+  const handleDeleteSelectedImages = async (imagesToDelete?: Set<string>) => {
+    const targetImages = imagesToDelete || selectedImages;
+    if (targetImages.size === 0) return;
 
     try {
       const { supabase } = await import("@/integrations/supabase/client");
-      const imageIds = Array.from(selectedImages);
+      const imageIds = Array.from(targetImages);
       
       // Find images to get storage paths
-      const imagesToDelete = images.filter(img => imageIds.includes(img.id));
+      const imagesToDeleteData = images.filter(img => imageIds.includes(img.id));
       
       // Delete from database
       const { error: dbError } = await supabase
@@ -296,7 +297,7 @@ const Gallery = () => {
       }
       
       // Delete from storage
-      const filesToDelete = imagesToDelete
+      const filesToDelete = imagesToDeleteData
         .filter(img => img.url && img.url.includes('supabase.co'))
         .map(img => {
           const urlParts = img.url.split('/');
@@ -346,10 +347,7 @@ const Gallery = () => {
 
   const handleDeleteBrokenImages = async () => {
     if (brokenImages.size === 0) return;
-    
-    setSelectedImages(brokenImages);
-    await handleDeleteSelectedImages();
-    setBrokenImages(new Set());
+    await handleDeleteSelectedImages(brokenImages);
   };
 
   const handleImageError = (imageId: string) => {
@@ -577,11 +575,11 @@ const Gallery = () => {
                   >
                     {selectedImages.size === images.length ? 'Deseleccionar Todo' : 'Seleccionar Todo'}
                   </Button>
-                  {selectedImages.size > 0 && (
+                   {selectedImages.size > 0 && (
                     <Button 
                       variant="destructive"
                       size="sm"
-                      onClick={handleDeleteSelectedImages}
+                      onClick={() => handleDeleteSelectedImages()}
                       className="transition-all duration-300"
                     >
                       <Trash2 className="w-4 h-4 mr-2" />
