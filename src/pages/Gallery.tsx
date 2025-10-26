@@ -33,6 +33,7 @@ const Gallery = () => {
   const [unlockedImages, setUnlockedImages] = useState<Set<string>>(new Set());
   const [selectedImages, setSelectedImages] = useState<Set<string>>(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [brokenImages, setBrokenImages] = useState<Set<string>>(new Set());
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -323,6 +324,11 @@ const Gallery = () => {
         imageIds.forEach(id => newSet.delete(id));
         return newSet;
       });
+      setBrokenImages(prev => {
+        const newSet = new Set(prev);
+        imageIds.forEach(id => newSet.delete(id));
+        return newSet;
+      });
       
       toast({
         title: "Imágenes eliminadas",
@@ -336,6 +342,18 @@ const Gallery = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const handleDeleteBrokenImages = async () => {
+    if (brokenImages.size === 0) return;
+    
+    setSelectedImages(brokenImages);
+    await handleDeleteSelectedImages();
+    setBrokenImages(new Set());
+  };
+
+  const handleImageError = (imageId: string) => {
+    setBrokenImages(prev => new Set([...prev, imageId]));
   };
 
   const handleImageSelection = (imageId: string, checked: boolean) => {
@@ -517,6 +535,17 @@ const Gallery = () => {
                   {images.length} Capturas Activas
                 </div>
               </div>
+              {brokenImages.size > 0 && (
+                <Button 
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleDeleteBrokenImages}
+                  className="transition-all duration-300"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Limpiar ({brokenImages.size} rotas)
+                </Button>
+              )}
               {!isSelectionMode ? (
                 <Button 
                   variant="outline"
@@ -628,6 +657,7 @@ const Gallery = () => {
                     alt={`Captura ${image.id}`}
                     className="w-full h-52 object-cover cursor-pointer group-hover:scale-110 transition-transform duration-700"
                     onClick={() => isSelectionMode ? handleImageSelection(image.id, !selectedImages.has(image.id)) : handleImageClick(image)}
+                    onError={() => handleImageError(image.id)}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   
