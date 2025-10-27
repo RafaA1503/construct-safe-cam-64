@@ -238,8 +238,9 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
   const analyzeFrame = async () => {
     if (!isStreaming || isAnalyzing || !videoRef.current || !canvasRef.current) return;
     
-    const apiKey = localStorage.getItem("openai_api_key");
-    if (!apiKey) return;
+    // Usamos función de borde (Lovable AI), no requiere API Key en cliente
+    // const apiKey = localStorage.getItem("openai_api_key");
+    // if (!apiKey) return;
     
     setIsAnalyzing(true);
     
@@ -256,97 +257,47 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
       ctx.drawImage(video, 0, 0);
       const imageData = canvas.toDataURL('image/jpeg', 0.8);
       
-      // Analizar con OpenAI Vision
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'text',
-                  text: 'Analiza esta imagen y detecta si hay personas presentes y qué equipos de protección personal (EPP) están usando. Responde SOLO con un JSON en este formato: {"persona_detectada": true/false, "epp_detectado": ["casco", "chaleco", "botas", "orejeras", "mascarilla", "gafas", "guantes"], "confianza": 0.85, "descripcion": "breve descripción"}. Solo incluye EPP que veas claramente: cascos de seguridad, chalecos reflectivos, botas de seguridad, orejeras de seguridad, mascarillas, gafas de seguridad, guantes de protección.'
-                },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: imageData
-                  }
-                }
-              ]
-            }
-          ],
-          max_tokens: 300,
-          temperature: 0.1
-        })
+      // Analizar vía Edge Function (Lovable AI Gateway)
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data: detectData, error: detectError } = await supabase.functions.invoke('detect-epp', {
+        body: { imageData }
       });
 
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`);
+      if (detectError) {
+        throw new Error(detectError.message || 'Error al invocar detección');
       }
 
-      const data = await response.json();
-      const content = data.choices[0].message.content;
-      
-      // Extraer JSON de la respuesta
-      const jsonMatch = content.match(/\{.*\}/s);
-      if (jsonMatch) {
-        const result = JSON.parse(jsonMatch[0]);
-        
-        if (result.persona_detectada && result.epp_detectado?.length > 0) {
-          const detectedItems = result.epp_detectado.map((type: string) => ({
-            type,
-            confidence: result.confianza || 0.8,
-            timestamp: new Date()
-          }));
-          
-          setDetectedPPE(prev => [...detectedItems, ...prev.slice(0, 4)]);
-          
-          // Capturar imagen automáticamente al detectar EPP
-          captureImage();
-          
-          // Anuncio por voz
-          if (isSpeechEnabled) {
-            const epp = result.epp_detectado.join(', ');
-            const utterance = new SpeechSynthesisUtterance(
-              `Persona detectada usando: ${epp}`
-            );
-            utterance.lang = 'es-ES';
-            speechSynthesis.speak(utterance);
-          }
+      const result = detectData as { persona_detectada: boolean; epp_detectado: string[]; confianza: number; descripcion?: string };
 
-          toast({
-            title: "EPP Detectado",
-            description: `${result.epp_detectado.length} equipos encontrados`,
-          });
-        } else if (result.persona_detectada) {
-          // Persona sin EPP
-          if (isSpeechEnabled) {
-            const utterance = new SpeechSynthesisUtterance(
-              "Persona detectada sin equipos de protección"
-            );
-            utterance.lang = 'es-ES';
-            speechSynthesis.speak(utterance);
-          }
-
-          toast({
-            title: "⚠️ Sin EPP",
-            description: "Persona detectada sin protección",
-            variant: "destructive"
-          });
+      if (result.persona_detectada && result.epp_detectado?.length > 0) {
+        const detectedItems = result.epp_detectado.map((type: string) => ({
+          type,
+          confidence: result.confianza || 0.8,
+          timestamp: new Date()
+        }));
+        setDetectedPPE(prev => [...detectedItems, ...prev.slice(0, 4)]);
+        // Captura automática
+        captureImage();
+        if (isSpeechEnabled) {
+          const epp = result.epp_detectado.join(', ');
+          const utterance = new SpeechSynthesisUtterance(`Persona detectada usando: ${epp}`);
+          utterance.lang = 'es-ES';
+          speechSynthesis.speak(utterance);
         }
+        toast({ title: "EPP Detectado", description: `${result.epp_detectado.length} equipos encontrados` });
+      } else if (result.persona_detectada) {
+        if (isSpeechEnabled) {
+          const utterance = new SpeechSynthesisUtterance("Persona detectada sin equipos de protección");
+          utterance.lang = 'es-ES';
+          speechSynthesis.speak(utterance);
+        }
+        toast({ title: "⚠️ Sin EPP", description: "Persona detectada sin protección", variant: "destructive" });
       }
     } catch (error) {
       console.error('Error en análisis:', error);
       toast({
         title: "Error de análisis",
-        description: "Revisa tu API Key de OpenAI",
+        description: "Hubo un problema analizando la imagen",
         variant: "destructive",
       });
     } finally {
