@@ -60,155 +60,77 @@ const ImageAnalysis = () => {
   };
 
 const analyzeImageWithOpenAI = async (imageData: string) => {
-    const openaiApiKey = localStorage.getItem('openai_api_key');
-    
-    if (!openaiApiKey) {
-      toast({
-        title: "Configuración requerida",
-        description: "Configura tu API Key de OpenAI en Configuración antes de continuar.",
-        variant: "destructive",
-      });
-      
-      setTimeout(() => {
-        navigate('/settings');
-      }, 2000);
-      
-      return null;
-    }
-
-    if (!openaiApiKey.startsWith('sk-')) {
-      toast({
-        title: "API Key inválida",
-        description: "La API Key debe comenzar con 'sk-'. Verifica en Configuración.",
-        variant: "destructive",
-      });
-      return null;
-    }
-
-    // Use the exact prompt requested by the user
-    const analysisPrompt = `Analiza esta imagen y detecta equipos de protección personal de construcción. Identifica específicamente: cascos de seguridad, chalecos reflectivos, botas de seguridad, orejeras de seguridad, mascarillas, gafas de seguridad, y guantes de protección. Para cada elemento detectado, indica el tipo de EPP y un nivel de confianza del 0-100%.
-
-Responde ÚNICAMENTE en formato JSON válido con esta estructura exacta:
-{
-  "equipos_detectados": {
-    "casco": { "detectado": true/false, "confianza": 0-100 },
-    "chaleco": { "detectado": true/false, "confianza": 0-100 },
-    "botas": { "detectado": true/false, "confianza": 0-100 },
-    "orejeras": { "detectado": true/false, "confianza": 0-100 },
-    "mascarilla": { "detectado": true/false, "confianza": 0-100 },
-    "gafas": { "detectado": true/false, "confianza": 0-100 },
-    "guantes": { "detectado": true/false, "confianza": 0-100 }
-  },
-  "confianza_general": 0-100,
-  "observaciones": "descripción de lo observado"
-}
-
-No incluyas explicaciones adicionales, solo el JSON.`;
-
     try {
-      console.log('Enviando solicitud a OpenAI...');
+      console.log('Enviando solicitud al edge function detect-epp...');
       
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${openaiApiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'gpt-4.1-2025-04-14',
-          messages: [
-            {
-              role: 'system',
-              content: 'Eres un experto analista de seguridad industrial especializado en detectar equipos de protección personal en imágenes de construcción. Siempre respondes en JSON válido sin texto adicional.'
-            },
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: analysisPrompt },
-                { type: 'image_url', image_url: { url: imageData } }
-              ]
-            }
-          ],
-          max_completion_tokens: 800
-        })
+      // Usar edge function con formato detallado
+      const { data: detectData, error: detectError } = await supabase.functions.invoke('detect-epp', {
+        body: { imageData, format: 'detailed' }
       });
 
-      console.log('Respuesta de OpenAI:', response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Error de OpenAI:', errorData);
-        
-        let errorMessage = 'Error desconocido';
-        if (response.status === 401) {
-          errorMessage = 'API Key inválida. Verifica tu configuración.';
-        } else if (response.status === 429) {
-          errorMessage = 'Límite de uso excedido. Espera unos minutos.';
-        } else if (response.status === 400) {
-          errorMessage = 'Solicitud inválida. La imagen podría ser muy grande.';
-        } else if (errorData.error?.message) {
-          errorMessage = errorData.error.message;
-        }
-        
-        throw new Error(`OpenAI API Error (${response.status}): ${errorMessage}`);
+      if (detectError) {
+        throw new Error(detectError.message || 'Error al invocar detección');
       }
 
-      const data = await response.json();
-      console.log('Análisis completado exitosamente');
+      const result = detectData as { 
+        personas: Array<{
+          id: number;
+          equipos_detectados: {
+            [key: string]: { detectado: boolean; confianza: number };
+          };
+          observaciones: string;
+        }>;
+        total_personas: number;
+        confianza_general: number;
+      };
+
+      if (!result.personas || result.personas.length === 0) {
+        throw new Error('No se detectaron personas en la imagen');
+      }
+
+      // Agregar información global de todas las personas
+      const allDetections: string[] = [];
+      const allMissing: string[] = [];
       
-      const rawContent = data.choices?.[0]?.message?.content ?? '';
-      console.log('Respuesta raw de OpenAI:', rawContent);
+      let analysisText = `TOTAL PERSONAS DETECTADAS: ${result.total_personas}\n`;
+      analysisText += `NIVEL DE CONFIANZA GENERAL: ${Math.round(result.confianza_general)}%\n\n`;
 
-      if (!rawContent.trim()) {
-        throw new Error('No se recibió respuesta del modelo de IA');
-      }
+      result.personas.forEach((persona, index) => {
+        const equipos = persona.equipos_detectados;
+        const ppeFound: string[] = [];
+        
+        if (equipos.casco?.detectado) ppeFound.push('casco');
+        if (equipos.chaleco?.detectado) ppeFound.push('chaleco');
+        if (equipos.botas?.detectado) ppeFound.push('botas');
+        if (equipos.orejeras?.detectado) ppeFound.push('orejeras');
+        if (equipos.mascarilla?.detectado) ppeFound.push('mascarilla');
+        if (equipos.gafas?.detectado) ppeFound.push('gafas');
+        if (equipos.guantes?.detectado) ppeFound.push('guantes');
 
-      // Parse JSON response
-      let parsed: any;
-      try {
-        // Clean the response in case there are code blocks
-        const cleanedContent = rawContent.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        parsed = JSON.parse(cleanedContent);
-      } catch (parseError) {
-        console.error('Error parsing JSON:', parseError);
-        console.error('Raw content that failed to parse:', rawContent);
-        throw new Error('La respuesta del modelo no está en formato JSON válido');
-      }
+        const missing = REQUIRED_PPE.filter(item => !ppeFound.includes(item));
+        
+        allDetections.push(...ppeFound);
+        allMissing.push(...missing);
 
-      // Validate the expected structure
-      if (!parsed.equipos_detectados) {
-        throw new Error('La respuesta no contiene la estructura esperada de equipos detectados');
-      }
+        analysisText += `--- PERSONA ${persona.id} ---\n`;
+        analysisText += `EPP DETECTADOS: ${ppeFound.join(', ') || 'Ninguno'}\n`;
+        analysisText += `EPP FALTANTES: ${missing.join(', ') || 'Ninguno'}\n`;
+        analysisText += `OBSERVACIONES: ${persona.observaciones}\n\n`;
+        analysisText += `DETALLES:\n`;
+        analysisText += Object.entries(equipos).map(([equipo, info]: [string, any]) => 
+          `- ${equipo.toUpperCase()}: ${info.detectado ? '✓ DETECTADO' : '✗ NO DETECTADO'} (${info.confianza || 0}%)`
+        ).join('\n');
+        analysisText += '\n\n';
+      });
 
-      // Extract detected PPE
-      const equipos = parsed.equipos_detectados;
-      const ppeFound: string[] = [];
-      
-      if (equipos.casco?.detectado) ppeFound.push('casco');
-      if (equipos.chaleco?.detectado) ppeFound.push('chaleco');
-      if (equipos.botas?.detectado) ppeFound.push('botas');
-      if (equipos.orejeras?.detectado) ppeFound.push('orejeras');
-      if (equipos.mascarilla?.detectado) ppeFound.push('mascarilla');
-      if (equipos.gafas?.detectado) ppeFound.push('gafas');
-      if (equipos.guantes?.detectado) ppeFound.push('guantes');
-
-      const missing = REQUIRED_PPE.filter(item => !ppeFound.includes(item));
-      const confidence = (parsed.confianza_general || 85) / 100;
-
-      const analysisText = `EPP DETECTADOS: ${ppeFound.join(', ') || 'Ninguno'}
-EPP FALTANTES: ${missing.join(', ') || 'Ninguno'}
-NIVEL DE CONFIANZA: ${Math.round(confidence * 100)}%
-OBSERVACIONES: ${parsed.observaciones || 'Análisis completado'}
-
-DETALLES POR EQUIPO:
-${Object.entries(equipos).map(([equipo, info]: [string, any]) => 
-  `- ${equipo.toUpperCase()}: ${info.detectado ? '✓ DETECTADO' : '✗ NO DETECTADO'} (${info.confianza || 0}%)`
-).join('\n')}`;
+      // Remover duplicados
+      const uniqueDetections = [...new Set(allDetections)];
+      const uniqueMissing = [...new Set(allMissing)].filter(item => !uniqueDetections.includes(item));
 
       return {
-        detections: ppeFound,
-        missing,
-        confidence,
+        detections: uniqueDetections,
+        missing: uniqueMissing,
+        confidence: result.confianza_general / 100,
         analysis: analysisText
       };
 

@@ -41,24 +41,30 @@ serve(async (req) => {
 
     const basePrompt =
       format === "detailed"
-        ? `Analiza esta imagen y detecta equipos de protección personal de construcción. Identifica específicamente: cascos de seguridad, chalecos reflectivos, botas de seguridad, orejeras de seguridad, mascarillas, gafas de seguridad, y guantes de protección.
+        ? `Analiza esta imagen y detecta TODAS las personas presentes y sus equipos de protección personal de construcción. Para cada persona, identifica: cascos de seguridad, chalecos reflectivos, botas de seguridad, orejeras de seguridad, mascarillas, gafas de seguridad, y guantes de protección.
 
 Responde ÚNICAMENTE en formato JSON válido con esta estructura exacta:
 {
-  "equipos_detectados": {
-    "casco": { "detectado": true/false, "confianza": 0-100 },
-    "chaleco": { "detectado": true/false, "confianza": 0-100 },
-    "botas": { "detectado": true/false, "confianza": 0-100 },
-    "orejeras": { "detectado": true/false, "confianza": 0-100 },
-    "mascarilla": { "detectado": true/false, "confianza": 0-100 },
-    "gafas": { "detectado": true/false, "confianza": 0-100 },
-    "guantes": { "detectado": true/false, "confianza": 0-100 }
-  },
-  "confianza_general": 0-100,
-  "observaciones": "descripción de lo observado"
+  "personas": [
+    {
+      "id": 1,
+      "equipos_detectados": {
+        "casco": { "detectado": true/false, "confianza": 0-100 },
+        "chaleco": { "detectado": true/false, "confianza": 0-100 },
+        "botas": { "detectado": true/false, "confianza": 0-100 },
+        "orejeras": { "detectado": true/false, "confianza": 0-100 },
+        "mascarilla": { "detectado": true/false, "confianza": 0-100 },
+        "gafas": { "detectado": true/false, "confianza": 0-100 },
+        "guantes": { "detectado": true/false, "confianza": 0-100 }
+      },
+      "observaciones": "descripción de esta persona"
+    }
+  ],
+  "total_personas": 0,
+  "confianza_general": 0-100
 }
 No incluyas explicaciones adicionales, solo el JSON.`
-        : `Analiza esta imagen y devuelve SOLO JSON con esta forma exacta: {"persona_detectada": true/false, "epp_detectado": ["casco","chaleco","botas","orejeras","mascarilla","gafas","guantes"], "confianza": 0.0-1.0, "descripcion": "breve descripción"}. Devuelve solo EPP claramente visibles. Sin texto adicional.`;
+        : `Analiza esta imagen y detecta TODAS las personas y sus EPP. Devuelve SOLO JSON: {"personas": [{"id": 1, "epp_detectado": ["casco","chaleco",...], "confianza": 0.0-1.0}], "total_personas": 0, "descripcion": "resumen"}. Sin texto adicional.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -137,19 +143,28 @@ No incluyas explicaciones adicionales, solo el JSON.`
 
     // Normalize output
     if (format === "detailed") {
-      const equipos = parsed.equipos_detectados || {};
+      const personas = Array.isArray(parsed.personas) ? parsed.personas : [];
+      const normalizedPersonas = personas.map((persona: any) => {
+        const equipos = persona.equipos_detectados || {};
+        return {
+          id: Number(persona.id ?? 1),
+          equipos_detectados: {
+            casco: { detectado: !!equipos.casco?.detectado, confianza: Number(equipos.casco?.confianza ?? 0) },
+            chaleco: { detectado: !!equipos.chaleco?.detectado, confianza: Number(equipos.chaleco?.confianza ?? 0) },
+            botas: { detectado: !!equipos.botas?.detectado, confianza: Number(equipos.botas?.confianza ?? 0) },
+            orejeras: { detectado: !!equipos.orejeras?.detectado, confianza: Number(equipos.orejeras?.confianza ?? 0) },
+            mascarilla: { detectado: !!equipos.mascarilla?.detectado, confianza: Number(equipos.mascarilla?.confianza ?? 0) },
+            gafas: { detectado: !!equipos.gafas?.detectado, confianza: Number(equipos.gafas?.confianza ?? 0) },
+            guantes: { detectado: !!equipos.guantes?.detectado, confianza: Number(equipos.guantes?.confianza ?? 0) },
+          },
+          observaciones: String(persona.observaciones ?? "")
+        };
+      });
+
       const norm = {
-        equipos_detectados: {
-          casco: { detectado: !!equipos.casco?.detectado, confianza: Number(equipos.casco?.confianza ?? 0) },
-          chaleco: { detectado: !!equipos.chaleco?.detectado, confianza: Number(equipos.chaleco?.confianza ?? 0) },
-          botas: { detectado: !!equipos.botas?.detectado, confianza: Number(equipos.botas?.confianza ?? 0) },
-          orejeras: { detectado: !!equipos.orejeras?.detectado, confianza: Number(equipos.orejeras?.confianza ?? 0) },
-          mascarilla: { detectado: !!equipos.mascarilla?.detectado, confianza: Number(equipos.mascarilla?.confianza ?? 0) },
-          gafas: { detectado: !!equipos.gafas?.detectado, confianza: Number(equipos.gafas?.confianza ?? 0) },
-          guantes: { detectado: !!equipos.guantes?.detectado, confianza: Number(equipos.guantes?.confianza ?? 0) },
-        },
-        confianza_general: Number(parsed.confianza_general ?? 85),
-        observaciones: String(parsed.observaciones ?? ""),
+        personas: normalizedPersonas,
+        total_personas: Number(parsed.total_personas ?? normalizedPersonas.length),
+        confianza_general: Number(parsed.confianza_general ?? 85)
       };
 
       return new Response(JSON.stringify(norm), {
@@ -157,20 +172,31 @@ No incluyas explicaciones adicionales, solo el JSON.`
       });
     }
 
-    // simple format
-    let persona_detectada = Boolean(parsed.persona_detectada);
-    let epp_detectado: string[] = Array.isArray(parsed.epp_detectado) ? parsed.epp_detectado : [];
-    epp_detectado = epp_detectado
-      .map((x) => String(x).toLowerCase().trim())
-      .filter((x) => ALLOWED_EPP.includes(x));
-    const confianza = typeof parsed.confianza === "number" ? Number(parsed.confianza) : Number(parsed.confianza_general ?? 0) / 100;
-    const descripcion = String(parsed.descripcion ?? parsed.observaciones ?? "");
+    // simple format - extract data for multiple people
+    const personas = Array.isArray(parsed.personas) ? parsed.personas : [];
+    const totalPersonas = Number(parsed.total_personas ?? personas.length);
+    const descripcion = String(parsed.descripcion ?? "");
 
-    // If no explicit persona_detectada but EPP present, infer true
-    if (!persona_detectada && epp_detectado.length > 0) persona_detectada = true;
+    const personasNormalizadas = personas.map((p: any) => {
+      let epp_detectado: string[] = Array.isArray(p.epp_detectado) ? p.epp_detectado : [];
+      epp_detectado = epp_detectado
+        .map((x) => String(x).toLowerCase().trim())
+        .filter((x) => ALLOWED_EPP.includes(x));
+      const confianza = typeof p.confianza === "number" ? Number(p.confianza) : 0.8;
+      
+      return {
+        id: Number(p.id ?? 1),
+        epp_detectado,
+        confianza: isFinite(confianza) ? confianza : 0.8
+      };
+    });
 
     return new Response(
-      JSON.stringify({ persona_detectada, epp_detectado, confianza: isFinite(confianza) ? confianza : 0.8, descripcion }),
+      JSON.stringify({ 
+        personas: personasNormalizadas,
+        total_personas: totalPersonas,
+        descripcion 
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {

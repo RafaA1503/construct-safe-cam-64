@@ -267,31 +267,57 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
         throw new Error(detectError.message || 'Error al invocar detección');
       }
 
-      const result = detectData as { persona_detectada: boolean; epp_detectado: string[]; confianza: number; descripcion?: string };
+      const result = detectData as { 
+        personas: Array<{ id: number; epp_detectado: string[]; confianza: number }>;
+        total_personas: number;
+        descripcion: string;
+      };
 
-      if (result.persona_detectada && result.epp_detectado?.length > 0) {
-        const detectedItems = result.epp_detectado.map((type: string) => ({
-          type,
-          confidence: result.confianza || 0.8,
-          timestamp: new Date()
-        }));
-        setDetectedPPE(prev => [...detectedItems, ...prev.slice(0, 4)]);
-        // Captura automática
-        captureImage();
-        if (isSpeechEnabled) {
-          const epp = result.epp_detectado.join(', ');
-          const utterance = new SpeechSynthesisUtterance(`Persona detectada usando: ${epp}`);
-          utterance.lang = 'es-ES';
-          speechSynthesis.speak(utterance);
+      if (result.personas && result.personas.length > 0) {
+        // Agregar todas las detecciones de todas las personas
+        const allDetections: DetectedPPE[] = [];
+        result.personas.forEach(persona => {
+          if (persona.epp_detectado && persona.epp_detectado.length > 0) {
+            persona.epp_detectado.forEach(type => {
+              allDetections.push({
+                type,
+                confidence: persona.confianza || 0.8,
+                timestamp: new Date()
+              });
+            });
+          }
+        });
+
+        if (allDetections.length > 0) {
+          setDetectedPPE(prev => [...allDetections, ...prev.slice(0, 10)]);
+          // Captura automática
+          captureImage();
+          
+          if (isSpeechEnabled) {
+            const mensaje = result.total_personas === 1 
+              ? `Persona detectada usando ${allDetections.length} equipos de protección`
+              : `${result.total_personas} personas detectadas con equipos de protección`;
+            const utterance = new SpeechSynthesisUtterance(mensaje);
+            utterance.lang = 'es-ES';
+            speechSynthesis.speak(utterance);
+          }
+          
+          toast({ 
+            title: "EPP Detectado", 
+            description: `${result.total_personas} persona(s) - ${allDetections.length} equipos totales` 
+          });
+        } else {
+          if (isSpeechEnabled) {
+            const utterance = new SpeechSynthesisUtterance(`${result.total_personas} persona(s) detectada(s) sin equipos de protección`);
+            utterance.lang = 'es-ES';
+            speechSynthesis.speak(utterance);
+          }
+          toast({ 
+            title: "⚠️ Sin EPP", 
+            description: `${result.total_personas} persona(s) sin protección`, 
+            variant: "destructive" 
+          });
         }
-        toast({ title: "EPP Detectado", description: `${result.epp_detectado.length} equipos encontrados` });
-      } else if (result.persona_detectada) {
-        if (isSpeechEnabled) {
-          const utterance = new SpeechSynthesisUtterance("Persona detectada sin equipos de protección");
-          utterance.lang = 'es-ES';
-          speechSynthesis.speak(utterance);
-        }
-        toast({ title: "⚠️ Sin EPP", description: "Persona detectada sin protección", variant: "destructive" });
       }
     } catch (error) {
       console.error('Error en análisis:', error);
