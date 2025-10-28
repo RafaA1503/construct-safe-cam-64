@@ -41,9 +41,18 @@ serve(async (req) => {
 
     const basePrompt =
       format === "detailed"
-        ? `Analiza esta imagen y detecta TODAS las personas presentes y sus equipos de protección personal de construcción. Para cada persona, identifica: cascos de seguridad, chalecos reflectivos, botas de seguridad, orejeras de seguridad, mascarillas, gafas de seguridad, y guantes de protección.
+        ? `Analiza esta imagen de construcción. IMPORTANTE: Cuenta y analiza CADA PERSONA visible individualmente.
 
-Responde ÚNICAMENTE en formato JSON válido con esta estructura exacta:
+Para CADA persona detectada, identifica estos EPP:
+- Casco de seguridad
+- Chaleco reflectivo
+- Botas de seguridad
+- Orejeras
+- Mascarilla
+- Gafas de seguridad
+- Guantes
+
+Responde SOLO con JSON (sin markdown):
 {
   "personas": [
     {
@@ -57,14 +66,18 @@ Responde ÚNICAMENTE en formato JSON válido con esta estructura exacta:
         "gafas": { "detectado": true/false, "confianza": 0-100 },
         "guantes": { "detectado": true/false, "confianza": 0-100 }
       },
-      "observaciones": "descripción de esta persona"
+      "observaciones": "breve descripción"
     }
   ],
-  "total_personas": 0,
+  "total_personas": X,
   "confianza_general": 0-100
-}
-No incluyas explicaciones adicionales, solo el JSON.`
-        : `Analiza esta imagen y detecta TODAS las personas y sus EPP. Devuelve SOLO JSON: {"personas": [{"id": 1, "epp_detectado": ["casco","chaleco",...], "confianza": 0.0-1.0}], "total_personas": 0, "descripcion": "resumen"}. Sin texto adicional.`;
+}`
+        : `Detecta TODAS las personas en esta imagen y su EPP de construcción. Analiza CADA persona individualmente.
+
+EPP a detectar: casco, chaleco, botas, orejeras, mascarilla, gafas, guantes.
+
+Responde SOLO JSON (sin markdown):
+{"personas": [{"id": 1, "epp_detectado": ["casco","chaleco"], "confianza": 0.85}], "total_personas": X, "descripcion": "breve resumen"}`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
