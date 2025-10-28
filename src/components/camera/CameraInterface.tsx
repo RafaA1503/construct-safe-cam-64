@@ -265,17 +265,52 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
       ctx.drawImage(video, 0, 0);
       const imageData = canvas.toDataURL('image/jpeg', 0.6);
       
-      // Analizar vía Edge Function (Lovable AI Gateway)
-      const { supabase } = await import("@/integrations/supabase/client");
-      const { data: detectData, error: detectError } = await supabase.functions.invoke('detect-epp', {
-        body: { imageData }
-      });
-
-      if (detectError) {
-        throw new Error(detectError.message || 'Error al invocar detección');
+      // Analizar directamente con OpenAI usando la API que ingresas en Configuración
+      const apiKey = localStorage.getItem('openai_api_key');
+      const customPrompt = localStorage.getItem('detection_prompt');
+      if (!apiKey) {
+        throw new Error('Configure su API Key en Configuración');
       }
 
-      const result = detectData as { 
+      const basePrompt = `Detecta TODAS las personas en esta imagen y su EPP de construcción. Analiza CADA persona individualmente.\n\nEPP a detectar: casco, chaleco, botas, orejeras, mascarilla, gafas, guantes.\n\nResponde SOLO JSON: {"personas": [{"id": 1, "epp_detectado": ["casco","chaleco"], "confianza": 0.85}], "total_personas": X, "descripcion": "breve resumen"}`;
+
+      const payload = {
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Eres un analista experto en seguridad industrial. Devuelve SIEMPRE JSON válido sin texto adicional.' },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: customPrompt || basePrompt },
+              { type: 'image_url', image_url: { url: imageData } }
+            ]
+          }
+        ]
+      } as any;
+
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!resp.ok) {
+        const t = await resp.text();
+        throw new Error(`OpenAI error ${resp.status}: ${t}`);
+      }
+
+      const data = await resp.json();
+      const content: string = data.choices?.[0]?.message?.content ?? '';
+
+      const tryParse = (text: string) => {
+        const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        try { return JSON.parse(cleaned); } catch { const m = cleaned.match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; }
+      };
+
+      const result = tryParse(content) as {
         personas: Array<{ id: number; epp_detectado: string[]; confianza: number }>;
         total_personas: number;
         descripcion: string;

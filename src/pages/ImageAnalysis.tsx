@@ -61,23 +61,54 @@ const ImageAnalysis = () => {
 
 const analyzeImageWithOpenAI = async (imageData: string) => {
     try {
-      console.log('Enviando solicitud al edge function detect-epp...');
+      console.log('Analizando imagen directamente con OpenAI...');
+
+      const apiKey = localStorage.getItem('openai_api_key');
+      const customPrompt = localStorage.getItem('detection_prompt');
+      if (!apiKey) throw new Error('Configure su API Key en Configuración');
       
-      // Usar edge function con formato detallado
-      const { data: detectData, error: detectError } = await supabase.functions.invoke('detect-epp', {
-        body: { imageData, format: 'detailed' }
+      const basePrompt = `Analiza esta imagen de construcción. IMPORTANTE: Cuenta y analiza CADA PERSONA visible individualmente.\n\nPara CADA persona detectada, identifica estos EPP:\n- Casco de seguridad\n- Chaleco reflectivo\n- Botas de seguridad\n- Orejeras\n- Mascarilla\n- Gafas de seguridad\n- Guantes\n\nResponde SOLO con JSON (sin markdown):\n{\n  "personas": [\n    {\n      "id": 1,\n      "equipos_detectados": {\n        "casco": { "detectado": true/false, "confianza": 0-100 },\n        "chaleco": { "detectado": true/false, "confianza": 0-100 },\n        "botas": { "detectado": true/false, "confianza": 0-100 },\n        "orejeras": { "detectado": true/false, "confianza": 0-100 },\n        "mascarilla": { "detectado": true/false, "confianza": 0-100 },\n        "gafas": { "detectado": true/false, "confianza": 0-100 },\n        "guantes": { "detectado": true/false, "confianza": 0-100 }\n      },\n      "observaciones": "breve descripción"\n    }\n  ],\n  "total_personas": X,\n  "confianza_general": 0-100\n}`;
+
+      const payload: any = {
+        model: 'gpt-4o-mini',
+        messages: [
+          { role: 'system', content: 'Eres un analista experto en seguridad industrial. Devuelve SIEMPRE JSON válido sin texto adicional.' },
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: customPrompt || basePrompt },
+              { type: 'image_url', image_url: { url: imageData } },
+            ],
+          },
+        ],
+      };
+
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       });
 
-      if (detectError) {
-        throw new Error(detectError.message || 'Error al invocar detección');
+      if (!resp.ok) {
+        const t = await resp.text();
+        throw new Error(`OpenAI error ${resp.status}: ${t}`);
       }
 
-      const result = detectData as { 
+      const data = await resp.json();
+      const content: string = data.choices?.[0]?.message?.content ?? '';
+
+      const tryParse = (text: string) => {
+        const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        try { return JSON.parse(cleaned); } catch { const m = cleaned.match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; }
+      };
+
+      const result = tryParse(content) as { 
         personas: Array<{
           id: number;
-          equipos_detectados: {
-            [key: string]: { detectado: boolean; confianza: number };
-          };
+          equipos_detectados: { [key: string]: { detectado: boolean; confianza: number } };
           observaciones: string;
         }>;
         total_personas: number;
