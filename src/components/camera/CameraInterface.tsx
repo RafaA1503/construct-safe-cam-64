@@ -30,12 +30,14 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  // Auto-start camera when API is configured (unless user stopped manually)
   useEffect(() => {
-    if (!isStreaming && !isManuallyStopped) {
+    const apiKey = localStorage.getItem("openai_api_key");
+    if (apiKey && !isStreaming && !isManuallyStopped) {
       startCamera();
     }
 
-    // Escuchar evento de configuración de API (seguir soportando flujo actual)
+    // Escuchar evento de configuración de API
     const handleApiConfigured = () => {
       if (!isStreaming) {
         setIsManuallyStopped(false);
