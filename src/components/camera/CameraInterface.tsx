@@ -246,6 +246,14 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
       // Capturar frame actual del video
       const video = videoRef.current;
       const canvas = canvasRef.current;
+
+      // Evitar analizar antes de que el video tenga dimensiones válidas
+      if (!video.videoWidth || !video.videoHeight) {
+        console.warn('Video aún sin dimensiones, esperando siguiente frame...');
+        setIsAnalyzing(false);
+        return;
+      }
+
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
@@ -319,9 +327,10 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
       }
     } catch (error) {
       console.error('Error en análisis:', error);
+      const msg = error instanceof Error ? error.message : 'Hubo un problema analizando la imagen';
       toast({
         title: "Error de análisis",
-        description: "Hubo un problema analizando la imagen",
+        description: msg,
         variant: "destructive",
       });
     } finally {
