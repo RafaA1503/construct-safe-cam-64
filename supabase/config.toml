@@ -1,1 +1,4 @@
 project_id = "tavhwmpxwwdimzalkdov"
+
+[functions.detect-epp]
+verify_jwt = false

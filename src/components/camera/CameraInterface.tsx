@@ -30,14 +30,12 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Auto-start camera when API is configured (unless user stopped manually)
   useEffect(() => {
-    const apiKey = localStorage.getItem("openai_api_key");
-    if (apiKey && !isStreaming && !isManuallyStopped) {
+    if (!isStreaming && !isManuallyStopped) {
       startCamera();
     }
 
-    // Escuchar evento de configuración de API
+    // Escuchar evento de configuración de API (seguir soportando flujo actual)
     const handleApiConfigured = () => {
       if (!isStreaming) {
         setIsManuallyStopped(false);
@@ -255,7 +253,7 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
       if (!ctx) return;
       
       ctx.drawImage(video, 0, 0);
-      const imageData = canvas.toDataURL('image/jpeg', 0.8);
+      const imageData = canvas.toDataURL('image/jpeg', 0.6);
       
       // Analizar vía Edge Function (Lovable AI Gateway)
       const { supabase } = await import("@/integrations/supabase/client");
@@ -333,7 +331,7 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
 
   useEffect(() => {
     if (isStreaming) {
-      const interval = setInterval(analyzeFrame, 3000);
+      const interval = setInterval(analyzeFrame, 1500);
       return () => clearInterval(interval);
     }
   }, [isStreaming, isAnalyzing, isSpeechEnabled]);
