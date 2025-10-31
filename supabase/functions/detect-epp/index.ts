@@ -22,15 +22,17 @@ serve(async (req) => {
   }
 
   try {
-    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
-    if (!OPENAI_API_KEY) {
-      return new Response(JSON.stringify({ error: "OPENAI_API_KEY is not configured" }), {
-        status: 500,
+    const { imageData, customPrompt, format = "simple", apiKey } = await req.json();
+
+    const ENV_KEY = Deno.env.get("OPENAI_API_KEY");
+    const API_KEY = typeof apiKey === "string" && apiKey.trim().length > 0 ? apiKey.trim() : ENV_KEY;
+
+    if (!API_KEY) {
+      return new Response(JSON.stringify({ error: "Falta la API Key. Configure su clave en Configuración o en OPENAI_API_KEY." }), {
+        status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    const { imageData, customPrompt, format = "simple" } = await req.json();
 
     if (!imageData || typeof imageData !== "string") {
       return new Response(JSON.stringify({ error: "imageData (data URL) is required" }), {
@@ -82,7 +84,7 @@ Responde SOLO JSON (sin markdown):
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        Authorization: `Bearer ${API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({

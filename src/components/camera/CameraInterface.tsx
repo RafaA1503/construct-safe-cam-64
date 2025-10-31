@@ -272,45 +272,22 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
         throw new Error('Configure su API Key en Configuración');
       }
 
-      const basePrompt = `Detecta TODAS las personas en esta imagen y su EPP de construcción. Analiza CADA persona individualmente.\n\nEPP a detectar: casco, chaleco, botas, orejeras, mascarilla, gafas, guantes.\n\nResponde SOLO JSON: {"personas": [{"id": 1, "epp_detectado": ["casco","chaleco"], "confianza": 0.85}], "total_personas": X, "descripcion": "breve resumen"}`;
-
-      const payload = {
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: 'Eres un analista experto en seguridad industrial. Devuelve SIEMPRE JSON válido sin texto adicional.' },
-          {
-            role: 'user',
-            content: [
-              { type: 'text', text: customPrompt || basePrompt },
-              { type: 'image_url', image_url: { url: imageData } }
-            ]
-          }
-        ]
-      } as any;
-
-      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
+      // Llamar función Edge con la API de Configuración
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke('detect-epp', {
+        body: {
+          imageData,
+          customPrompt,
+          format: 'simple',
+          apiKey,
         },
-        body: JSON.stringify(payload),
       });
 
-      if (!resp.ok) {
-        const t = await resp.text();
-        throw new Error(`OpenAI error ${resp.status}: ${t}`);
+      if (error) {
+        throw new Error(error.message || 'Error en función detect-epp');
       }
 
-      const data = await resp.json();
-      const content: string = data.choices?.[0]?.message?.content ?? '';
-
-      const tryParse = (text: string) => {
-        const cleaned = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-        try { return JSON.parse(cleaned); } catch { const m = cleaned.match(/\{[\s\S]*\}/); return m ? JSON.parse(m[0]) : null; }
-      };
-
-      const result = tryParse(content) as {
+      const result = data as {
         personas: Array<{ id: number; epp_detectado: string[]; confianza: number }>;
         total_personas: number;
         descripcion: string;
