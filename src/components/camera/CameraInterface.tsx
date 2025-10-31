@@ -288,7 +288,12 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
       }
 
       if ((data as any)?.success === false || (data as any)?.error) {
-        throw new Error((data as any)?.error || 'Error en análisis');
+        const errorMsg = (data as any)?.error || 'Error en análisis';
+        // Si es rate limit, mostrar mensaje específico
+        if (errorMsg.includes('Rate limit') || errorMsg.includes('429')) {
+          throw new Error('⏱️ Rate limit de OpenAI alcanzado. Espere unos segundos e intente nuevamente.');
+        }
+        throw new Error(errorMsg);
       }
 
       const result = data as {
@@ -358,7 +363,7 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
 
   useEffect(() => {
     if (isStreaming) {
-      const interval = setInterval(analyzeFrame, 1500);
+      const interval = setInterval(analyzeFrame, 3000); // Aumentado a 3 segundos para evitar rate limits
       return () => clearInterval(interval);
     }
   }, [isStreaming, isAnalyzing, isSpeechEnabled]);
