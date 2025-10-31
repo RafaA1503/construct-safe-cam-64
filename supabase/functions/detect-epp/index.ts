@@ -28,15 +28,15 @@ serve(async (req) => {
     const API_KEY = typeof apiKey === "string" && apiKey.trim().length > 0 ? apiKey.trim() : ENV_KEY;
 
     if (!API_KEY) {
-      return new Response(JSON.stringify({ error: "Falta la API Key. Configure su clave en Configuración o en OPENAI_API_KEY." }), {
-        status: 400,
+      return new Response(JSON.stringify({ success: false, error: "Falta la API Key. Configure su clave en Configuración o en OPENAI_API_KEY." }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     if (!imageData || typeof imageData !== "string") {
-      return new Response(JSON.stringify({ error: "imageData (data URL) is required" }), {
-        status: 400,
+      return new Response(JSON.stringify({ success: false, error: "imageData (data URL) es requerido" }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -103,32 +103,19 @@ Responde SOLO JSON (sin markdown):
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limits exceeded, please try again later." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(
-          JSON.stringify({ error: "Payment required, please add funds to your Lovable AI workspace." }),
-          { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
       const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
-      return new Response(JSON.stringify({ error: "AI gateway error" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, status: response.status, error: t || `OpenAI error ${response.status}` }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const data = await response.json();
     const content: string = data.choices?.[0]?.message?.content ?? "";
 
     if (!content) {
-      return new Response(JSON.stringify({ error: "Empty AI response" }), {
-        status: 500,
+      return new Response(JSON.stringify({ success: false, error: "Empty AI response" }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -150,8 +137,8 @@ Responde SOLO JSON (sin markdown):
     const parsed = tryParseJson(content);
 
     if (!parsed) {
-      return new Response(JSON.stringify({ error: "Failed to parse AI JSON" }), {
-        status: 500,
+      return new Response(JSON.stringify({ success: false, error: "Failed to parse AI JSON" }), {
+        status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

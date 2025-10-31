@@ -287,6 +287,10 @@ export const CameraInterface = ({ onLogout }: CameraInterfaceProps) => {
         throw new Error(error.message || 'Error en función detect-epp');
       }
 
+      if ((data as any)?.success === false || (data as any)?.error) {
+        throw new Error((data as any)?.error || 'Error en análisis');
+      }
+
       const result = data as {
         personas: Array<{ id: number; epp_detectado: string[]; confianza: number }>;
         total_personas: number;
